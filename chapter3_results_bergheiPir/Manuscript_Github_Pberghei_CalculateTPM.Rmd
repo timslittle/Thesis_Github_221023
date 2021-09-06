@@ -1,0 +1,324 @@
+---
+title: "P.berghei pir calculate TPM"
+author: "Timothy Little"
+date: "31/08/2021"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = TRUE, message = FALSE, warning = FALSE)
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r load_packages, include = FALSE, message = FALSE}
+library('readxl')
+library('readr')
+library('dplyr')
+library('purrr')
+library('ggplot2')
+library('DESeq2')
+library("RColorBrewer")
+library('colorspace')
+library('data.table')
+library('gridExtra')
+library('tibble')
+library('scales')
+library('stringr')
+library('kableExtra')
+library('viridis')
+library('corrplot')
+library('reshape2')
+library('circlize') # for circular plots
+library('cluster')    # clustering algorithms
+library('factoextra') # clustering algorithms & visualization
+library('ggfortify') # so ggplot understands prcomp objects
+library('ape') # for phylogeny plotting
+library('dendextend') # for dendrogram plotting
+library('plotly')
+library('ggpattern')
+library('ComplexHeatmap')
+
+#Colour blind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+show_col(cbPalette)
+
+#Want the defaults for arrange, select, mutate and summarise to be from dplyr
+arrange <- dplyr::arrange
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+select <- dplyr::select
+
+```
+
+```{r sourcing_functions}
+source('../rfunctions/uniquify_fun.R')
+source('../rfunctions/ordering_fun.R')
+source('../rfunctions/tpm_fun.R')
+source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+```
+
+```{r ordering_vectors}
+order_vector <- c('Sporo', 'Liv-pre4h', 'Liv-pre47h', 'Liv-post48h',
+                 'Liv-2h','Liv-4h','Liv-12h', 'Liv-18h',
+                 'Liv-24h' ,'Liv-36h','48h','54h','60h',
+                 'Mero','Asex','Schiz','Gam','-Pre3h','BldMl-24h','Ook')
+
+r_order_vector <- str_replace_all(order_vector, 
+                                  pattern = '-', 
+                                  replacement = '\\.')
+```
+
+```{r pir_id, message=FALSE, results='hide'}
+
+# Getting the pir gene names and transcript lengths needed for calculating the transcript-per-million
+
+# First we need to get the _pir gene names. These have been downloaded using a search of PlasmoDB P. berghei ANKA genome v3 using  "\*pir\*" search and manual removal of genes which clearly were not pir.
+
+allgene.info.file <- '../standard_files/PlasmoDb-47_beta_Pberghei_GenesByTaxon_Summary.csv'
+allgene.info <- as_tibble(
+  read_csv(allgene.info.file)
+) %>%
+  mutate(Geneid = `Gene ID`, 
+         Description = `Product Description`,
+         is_pseudo = `Is Pseudo`,
+         Transcript.Length = `Transcript Length`,
+         paralog_count = `Paralog count`) %>% 
+  select(Geneid, 
+         Description, 
+         is_pseudo, 
+         Transcript.Length, 
+         paralog_count)
+
+pir_info <- allgene.info %>% 
+  filter(str_detect(Description, 
+                    pattern = 'PIR(?!.+pseud)'), 
+         is_pseudo == 'No') %>% 
+  filter(!Geneid %in% 'PBANKA_0524600')
+#Removing the pir-like gene.
+
+pir_id <- pir_info$Geneid
+
+#pir
+
+pir_genes_list <- lapply(
+  unique(pir_info$Description), 
+  function(pir_group){
+    select(
+      filter(
+        pir_info, 
+        Description %in% pir_group
+      ),
+      Geneid
+    )
+  }
+)
+names(pir_genes_list) <- unique(pir_info$Description)
+
+#How many pirs are present on each chromosome?
+
+pir_tbl = as_tibble(data.frame(Geneid = pir_id))
+pir_chrom_tbl = pir_tbl %>% 
+  mutate(chrom = unlist( #Getting the chromosomes by a complicated set of lapply and sapplys...
+    sapply(
+      lapply(
+        sapply(
+          as.character(pir_tbl$Geneid), 
+          strsplit,
+          split = ''
+        ), 
+        '[', 
+        8:9
+      ), 
+      paste, 
+      collapse = ''
+    )
+  )
+  ) 
+pir_chrom_tbl %>% 
+  group_by(chrom) %>% 
+  dplyr::summarise(number_of_pirs_in_each_chromosome = n(),
+                   percentage_of_all_pirs = round(n()/nrow(pir_tbl), 3)*100) %>% 
+  dplyr::arrange(desc(percentage_of_all_pirs))
+
+#Getting the loci information
+pir_loci <- data.frame(
+  Geneid = pir_id,
+  chrom = str_extract(pir_id, 
+                      pattern = '(?<=_)[[:digit:]]{2}'),
+  number = as.numeric(str_extract(pir_id, 
+                                  pattern = '(?<=_[[:digit:]]{2})[[:digit:]]+'))
+) %>% 
+  filter(!chrom %in% '00') %>% #Remove chrom00 (contigs)
+  group_by(chrom) %>% 
+  mutate(jump = ifelse(lag(number, 
+                           default = 1001) < 1000 & number - lag(number, 
+                                                                 default = 0) > 1000,
+                       1,
+                       0)) %>% 
+  mutate(
+    jump = ifelse(cumsum(jump) == 1 | jump == 1, 1, 0)
+  ) %>% 
+  mutate(
+    locus = paste0(
+      chrom,
+      ifelse(jump == 0 & number < 1000, 
+             'Left',
+             'Right')
+    )
+  )
+
+# Detect 'jumps' of the gene number over 1000 within each chromosome, setting the lag default as 1001 in the
+#   first part of the ifelse statement so that chrom2 doesn't have an erroneous jump as it starts at >1000
+# Later cumsum is do that every gene after the 'jump' is included allowing us to define telomere ends.
+
+pir_clade <- read_delim('../standard_files/Pberghei_pir_clades.txt', 
+                        delim = '\t')
+pir_clade <- mutate(pir_clade, 
+                    locus = pir_loci$locus[match(Geneid, pir_loci$Geneid)])
+pir_id <- pir_clade$Geneid
+
+pir_clade_list <- lapply(unique(pir_clade$clade), function(clade_name){
+  pir_clade$Geneid[pir_clade$clade %in% clade_name]
+})
+names(pir_clade_list) <- as.character(unique(pir_clade$clade))
+```
+
+```{r transcript_redundancy, message = FALSE, results='hide'}
+
+#Note that there is some redundancy
+two.transcript <- allgene.info %>% 
+  dplyr::count(Geneid) %>% 
+  filter(n > 1)
+
+#Nine genes have two transcripts - need to give them one average of the transcripts since featurecounts has only
+# calculated one count for the locus
+two.transcript.info <- allgene.info[allgene.info$Geneid %in% two.transcript$Geneid,]
+two.transcript.mean = aggregate(Transcript.Length~Geneid, data=two.transcript.info, 
+                                FUN=function(x) c(mean=mean(x)))
+
+#Remove the first match
+allgene.info <- allgene.info[-(match(two.transcript.mean$Geneid, 
+                                     allgene.info$Geneid)),]
+
+#For the second match replace the transcript value with the mean calculated with aggregate
+allgene.info$Transcript.Length <- as.double(allgene.info$Transcript.Length)
+allgene.info[match(two.transcript.mean$Geneid, 
+                   allgene.info$Geneid),]$Transcript.Length <- two.transcript.mean$Transcript.Length
+lengths.transcript <- subset(allgene.info, select = c(Geneid, Transcript.Length), drop = F)
+```
+
+## Read in counts and calculate TPM
+
+```{r read_files_calc_TPM}
+#Reading in the counts from file
+berghei_counts <- read.csv('tl20-05_berghei_counts.csv',
+                               row.names = 1)
+
+berghei_tpm <- tpm(count_data = berghei_counts,
+                   lengths = lengths.transcript)
+
+apply(berghei_tpm[-1], 2, sum)
+```
+
+```{r check_tpm}
+
+#Used `dput` function to create a df of randomly chosen part of what I assume to be the true values.
+check_tpm <- structure(list(E03_Gam_1 = c(578.506468410824, 43.8844462052653, 
+                                          93.7895540428778, 55.9251999927489, 28.3887997796848, 49.7689021855188
+), 
+E03_Gam_2 = c(491.460414371885, 38.6239066701, 119.30578922894, 
+              148.452713617397, 38.8846967267782, 25.7641457887425), 
+E03_Gam_3 = c(824.81294645121, 
+              48.1865616211443, 92.5270154766448, 74.1594147167308, 34.8902736305123, 
+              74.9586138010564), 
+E03_Ook_1 = c(340.238340611313, 206.852529849517, 
+              43.9667720316821, 26.3982623497325, 14.9136412690561, 6.22485349746656
+), 
+E03_Ook_2 = c(713.689689765822, 178.051382530752, 58.5009548960498, 
+              52.6871822865333, 18.8623926433347, 12.0840592930611), 
+E03_Ook_3 = c(409.621633449974, 
+              104.471439607932, 38.7705779604298, 31.3685913631761, 20.1312670544009, 
+              14.7857267550803)), 
+row.names = 3345:3350, 
+class = "data.frame")
+
+all.equal(berghei_tpm[3345:3350,23:28],check_tpm)
+
+```
+
+
+```{r save_tpm_oldNames_allSamples}
+#Save the 'raw' TPM before any samples have been removed or sample names combined.
+
+write.csv(berghei_tpm,
+          'berghei_tpm_oldNamesAllSamples.csv')
+
+```
+
+```{r remove_E06-6h}
+#Remove the Caldelari (E06) 6h samples, as they did in their paper.
+berghei_tpm[,str_subset(colnames(berghei_tpm), 'E06_Liv.6h')] <- NULL
+```
+
+```{r hclusts, message = FALSE}
+experiment_id <- unique(na.omit(str_extract(colnames(berghei_tpm), pattern = 'E[[:digit:]]{2}')))
+
+lapply(experiment_id, 
+       function(experiment_name){
+         tpm_data <- select(berghei_tpm, matches(experiment_name))
+         if(ncol(tpm_data) > 3){
+           dists = dist(t(tpm_data))
+           par(cex=0.7)
+           plot(hclust(dists),
+                main = experiment_name)
+         }
+       })
+
+```
+
+Going to combine certain samples based on their similar profiles, e.g. <4h, >48h liver stages.
+
+```{r combine_similar_samples_byNames}
+col_stage <- colnames(berghei_tpm)
+
+#Combine all Liver samples 4h or before into LiverPre4h
+col_stage <- str_replace_all(col_stage,
+                             pattern = 'Liv\\.(2|4)h_[[:digit:]]+',
+                             replacement = 'Liv.pre4h')
+#Combine all Liver samples 48h or onwards into LiverPost48h
+col_stage <- str_replace_all(col_stage,
+                             pattern = 'Liv\\.(4[8-9]|[5-9][0-9])h_[[:digit:]]+',
+                             replacement = 'Liv.post48h')
+#Combine all blood meal samples 3h or before into BldMlPre3h
+col_stage <- str_replace_all(col_stage,
+                             pattern = '(1h|3h)_[[:digit:]]+', 
+                             replacement = 'Pre3h')
+#Uniquify the name names
+col_stage[grep(col_stage, 
+               perl = TRUE,
+               invert = TRUE,
+               pattern = '_[[:digit:]]{1,}$')] <- uniquify(col_stage[grep(col_stage, 
+                                                                          perl = TRUE,
+                                                                          invert = TRUE,
+                                                                          pattern = '_[[:digit:]]{1,}$')]) 
+```
+
+
+```{r remove_badly_clustering_samples}
+berghei_tpm$`E08_Liv.pre4h_1` <- NULL
+berghei_tpm$`E03_Asex.Schiz_1` <- NULL
+berghei_tpm$`E03_Asex.Schiz_3` <- NULL
+```
+
+## Saving the TPM 
+
+```{r save_tpm}
+write.csv(berghei_tpm,
+          'berghei_tpm.csv')
+```

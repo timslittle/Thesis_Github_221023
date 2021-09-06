@@ -1,0 +1,345 @@
+---
+title: "tl20-05_berghei_pir_GeneSetEnrichmentQusage"
+author: "Timothy Little"
+date: "15/01/2021"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+Using the P. berghei systematic analysis of pir gene expression data we want to perform statistical tests for enrichment of sets of pirs in certain stages of the malaria life cycle, using the package Qusage.
+
+Notes:
+
+* Do I want to remove the other Asexual samples, or the other Gam samples, when looking into these stages? Probably.
+* Probably want to remove samples which express almost no pirs. E.g. Sporoz is signif. downregulated for everything which is no surprise since it basically doesn't express pir genes.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = TRUE, message = FALSE, warning = FALSE)
+
+# Set the working directory for the document where the data is located.
+knitr::opts_knit$set(root.dir = 
+                       ".")
+
+# Change options so that numbers are displayed with all the zeros (e,g, as 1000000 not 1e6)
+options(scipen = 999) 
+
+set.seed(89)
+```
+
+```{r load_packages}
+library('dplyr')
+library('readr')
+library('readxl')
+library('data.table')
+library('tibble')
+library('qusage')
+library('ggplot2')
+library('stringr')
+library('RColorBrewer')
+library('writexl')
+```
+
+Download the data, and remove heterogeneous life cycle stages like 'Gam' and 'BldMl'. Will keep Asex.Mixed since we want to be able to compare that to other stages, although for each Asex stage we should remove the individual stages (like Rings) when looking at mixed, and the Mixed stages when looking at the individual stages.
+
+
+```{r read_count_data}
+
+berg_tpm <- read_xlsx('Manuscript_Frontiers_SuppInfo_berghei.xlsx',
+                      sheet = 'berg_TPM_allExpts_bioReps') %>% 
+  dplyr::rename_with(.fn = ~ str_replace(.x, 
+                                         pattern = 'Expt', 
+                                         replacement = 'E'))
+
+#Filter low expressed genes (greater than 10 tpm in at least one sample), convert to a matrix, add 1 for the log transformation, then transform to log2
+
+berg_tpm <- column_to_rownames(berg_tpm, var = 'Geneid') %>% 
+  select(!matches('BldMl|Gam_'))
+
+
+berg_tpm <- berg_tpm[apply(berg_tpm, 1, function(x) {any(x >= 10)}),]
+
+berg_tpm_log2plus1.mat <- berg_tpm %>% 
+  as.matrix %>% 
+  `+`(.+1) %>% 
+  log(base = 2)
+
+berg_tpm_log2plus1.mat[1:5,1:5]
+
+
+```
+
+```{r generate_labels}
+#Use make.names to remove the '-' from the labels
+colnames(berg_tpm_log2plus1.mat) <- make.names(colnames(berg_tpm_log2plus1.mat))
+
+labels <- colnames(berg_tpm_log2plus1.mat)
+
+#We want the life cycle stages to be the different groups for now.
+
+lifeCycle_labels <- str_extract(labels, 
+                                pattern = '(?<=E[[:digit:]]{2}_).+(?=_[[:digit:]]{1,2})')
+unique(lifeCycle_labels) %>% sort
+
+```
+
+```{r generate_genesets}
+pir_info <- read_xlsx('Manuscript_Frontiers_SuppInfo_berghei.xlsx',
+                      sheet = 1)
+
+pir_geneset <- list(pirs = pir_info$Geneid)
+
+subfam_list <- lapply(unique(pir_info$clade), 
+                     function(clade_nam) filter(pir_info, 
+                                                clade == clade_nam)$Geneid)
+names(subfam_list) <- unique(pir_info$clade)
+subfam_list <- subfam_list[unlist(lapply(subfam_list, function(x) length(x) > 3))]
+
+ShortLong_list <- 
+  lapply(unique(pir_info$SorL), 
+                     function(SorL_nam) filter(pir_info, 
+                                                SorL == SorL_nam)$Geneid)
+names(ShortLong_list) <- unique(pir_info$SorL)
+ShortLong_list <- ShortLong_list[unlist(lapply(ShortLong_list, function(x) length(x) > 3))]
+
+```
+
+What is the question that I actually want to answer? I have a lot of life stages and I want to know if each life stage contains an enrichment for transcription of certain groups of pirs compared to the others. So does this mean that I want to do a pairwise comparison, for each life cycle stage, versus every other identified stage? i.e. lapply for each stage with the 'labels' set as that stage and the rest all set to 'other'?
+
+
+```{r running_qusage_malevfemale}
+maleVfemale <- lapply(
+  list(pir_geneset), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Gam.Male-Gam.Female',
+                                gene_list,
+                                n.points = 2^18)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+
+```
+
+```{r lateliverstages}
+
+post48livvearlyliv <- lapply(
+  list(pir_geneset,
+    ShortLong_list), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Liv.post48h-Liv.24h',
+                                gene_list,
+                                n.points = 2^18)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+
+```
+
+```{r}
+livmero_livpost48.results <- lapply(
+  list(pir_geneset,
+       ShortLong_list), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Liv.Meroz-Liv.post48h',
+                                gene_list,
+                                n.points = 2^18)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+
+```
+
+```{r}
+asexRing_asexMix.results <- lapply(
+  list(pir_geneset,
+       subfam_list,
+       ShortLong_list), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Asex.Ring-Asex.Mixed',
+                                gene_list,
+                                n.points = 2^18)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+names(asexRing_asexMix.results) <- c('all', 'subfam', 'SorL')
+asexRing_asexMix.results$subfam$qstable
+asexRing_asexMix.results$SorL$qstable
+```
+
+
+```{r}
+maleGam_v_Asex.Mix.results <- lapply(
+  list(pir_geneset,
+    subfam_list, 
+    ShortLong_list), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Gam.Male-Asex.Mixed',
+                                gene_list,
+                                n.points = 2^18)
+    
+    # qs.results.df.fdr0.05 <- filter(qsTable(qs.results.subfam), 
+    #                                 FDR < 0.05)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+names(maleGam_v_Asex.Mix.results) <- c('all', 'subfam', 'SorL')
+
+plotGeneSetDistributions(maleGam_v_Asex.Mix.results$SorL$results, path.index =  'S')
+plotGeneSetDistributions(maleGam_v_Asex.Mix.results$SorL$results, path.index = 'L')
+plotGeneSetDistributions(maleGam_v_Asex.Mix.results$subfam$results, path.index = 'S4')
+mutate(maleGam_v_Asex.Mix.results$subfam$qstable , adjust = p.adjust(p.Value, method = 'fdr'))
+```
+
+```{r}
+maleGam_v_Liv.Meroz.results <- lapply(
+  list(pir_geneset,
+    subfam_list, 
+    ShortLong_list), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Gam.Male-Liv.Meroz',
+                                gene_list,
+                                n.points = 2^18)
+    
+    # qs.results.df.fdr0.05 <- filter(qsTable(qs.results.subfam), 
+    #                                 FDR < 0.05)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+```
+
+```{r}
+Asex.Mix_v_Liv.Meroz.results <- lapply(
+  list(pir_geneset,
+    subfam_list, 
+    ShortLong_list), 
+  function(gene_list){
+    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                lifeCycle_labels,
+                                'Asex.Mixed-Liv.Meroz',
+                                gene_list,
+                                n.points = 2^18)
+    
+    # qs.results.df.fdr0.05 <- filter(qsTable(qs.results.subfam), 
+    #                                 FDR < 0.05)
+    
+    list(results = qs.results.subfam, 
+         qstable = qsTable(qs.results.subfam) %>% 
+           mutate(contrast = qs.results.subfam$contrast))
+  }
+)
+names(Asex.Mix_v_Liv.Meroz.results) <- c('all', 'subfam', 'SorL')
+
+plotGeneSetDistributions(Asex.Mix_v_Liv.Meroz.results$SorL$results, 
+                         path.index = 'L')
+plotGeneSetDistributions(Asex.Mix_v_Liv.Meroz.results$SorL$results, 
+                         path.index = 'S')
+
+bind_rows(lapply(Asex.Mix_v_Liv.Meroz.results, 
+                 getElement, 
+                 'qstable')) %>% 
+  mutate(adjust = p.adjust(p.Value)) %>% 
+  arrange(adjust)
+```
+
+```{r}
+berghei_comparison_stats_df <- bind_rows(
+  lapply(c(maleGam_v_Asex.Mix.results, 
+           maleGam_v_Liv.Meroz.results, 
+           Asex.Mix_v_Liv.Meroz.results,
+           maleVfemale, 
+           post48livvearlyliv, 
+           livmero_livpost48.results),
+         getElement,
+         'qstable')
+) %>% 
+  select(contrast, everything()) %>% 
+  mutate(FDR = p.adjust(p.Value, method = 'fdr')) %>% 
+  filter(FDR < 0.05) %>% 
+  arrange(contrast)
+
+max_logfold <- ceiling(max(max(berghei_comparison_stats_df$log.fold.change), 
+                           abs(min(berghei_comparison_stats_df$log.fold.change))))
+
+
+(
+x <- ggplot(berghei_comparison_stats_df, 
+            aes(x = contrast, 
+                y = reorder(pathway.name, dplyr::desc(pathway.name)))) +
+  xlab('Comparison') + ylab('Geneset') + 
+  # scale_x_discrete(labels= c(1,2,3,4,6)) +
+  geom_count(aes(
+                 colour = log.fold.change), 
+             na.rm = TRUE) +
+  labs(colour = 'log2 Fold Change') +
+  scale_color_gradientn(
+    colours = rev(brewer.pal(11, "RdBu")),
+    na.value="transparent",
+    limits = c(-max_logfold,max_logfold),
+    # limits = c(-0.5,1.25)
+  ) +
+  scale_size_area(max_size = 6) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = 'white'),
+        plot.background = element_blank(),
+        legend.background = element_rect(fill = 'transparent'),
+        axis.text.x = element_text(angle = 90))
+  )
+```
+
+```{r save_xlsx}
+to_save <- bind_rows(
+  lapply(c(maleGam_v_Asex.Mix.results, 
+           maleGam_v_Liv.Meroz.results, 
+           Asex.Mix_v_Liv.Meroz.results,
+           maleVfemale, 
+           post48livvearlyliv, 
+           livmero_livpost48.results),
+         getElement,
+         'qstable')
+) %>% 
+  select(contrast, everything()) %>% 
+  mutate(FDR = p.adjust(p.Value, method = 'fdr')) %>% 
+  arrange(contrast, pathway.name)
+
+write_xlsx(to_save,
+           path = 'SupplementaryInformation_Stats_Qusage_berghei.xlsx')
+write.csv(to_save,
+          'SupplementaryInformation_Stats_Qusage_berghei.csv')
+```
+
+

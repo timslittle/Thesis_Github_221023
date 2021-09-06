@@ -1,0 +1,181 @@
+---
+title: "tl20-05_berghei_pir_DESEQ"
+author: "Timothy Little"
+date: "25/01/2021"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+Using the P. berghei systematic analysis of pir gene expression data we want to perform statistical tests for enrichment of individual pirs in certain stages of the malaria life cycle, using the package DESEQ2.
+
+Notes:
+* Have to remove Cook's distance cut off when looking at gene PBANKA_0600031 because otherwise DESEQ says that it is an outlier, from the data itself I'm not sure if I agree.
+
+Future:
+* Would be worth looking at http://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#levels-without-samples to see if we can incorporate the experiment values into this too.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = TRUE, message = FALSE, warning = FALSE)
+
+# Set the working directory for the document where the data is located.
+knitr::opts_knit$set(root.dir = 
+                       ".")
+
+# Change options so that numbers are displayed with all the zeros (e,g, as 1000000 not 1e6)
+options(scipen = 999) 
+
+set.seed(8)
+```
+
+```{r load_packages}
+library('dplyr')
+library('readr')
+library('readxl')
+library('writexl')
+library('data.table')
+library('tibble')
+library('ggplot2')
+library('stringr')
+library('RColorBrewer')
+library('DESeq2')
+library('apeglm')
+```
+
+Download the data, and remove heterogeneous life cycle stages like 'Gam' and 'BldMl'. Will keep Asex.Mixed since we want to be able to compare that to other stages, although for each Asex stage we should remove the individual stages (like Rings) when looking at mixed, and the Mixed stages when looking at the inidvidual stages.
+
+Note that I'm using the count data with names updated by how I combined similar stages e.g. Liver.post48h.
+
+```{r read_count_data}
+berg_counts <- read_xlsx('Manuscript_Frontiers_suppinfo_bergheiCounts_UpdatedNames.xlsx')
+
+#Filter low expressed genes (less than 1 count in all samples), convert to a matrix, add 1 for the log transformation, then transform to log2
+berg_counts <- column_to_rownames(berg_counts, var = 'Geneid') %>% 
+  select(!matches('BldMl|Gam_'))
+berg_counts.mat <- berg_counts[!rowSums(berg_counts) <= 10,] %>% 
+  as.matrix
+
+berg_counts.mat[1:5,1:5]
+```
+
+```{r generate_genesets}
+pir_info <- read_xlsx('Manuscript_Frontiers_SuppInfo_berghei.xlsx',
+                      sheet = 1)
+
+pir_geneset <- list(pirs = pir_info$Geneid)
+
+```
+
+```{r colData}
+( coldata <- data.frame(
+  row.names = colnames(berg_counts.mat),
+  experiment = str_extract(colnames(berg_counts.mat), pattern = '^E[[:digit:]]{2}'),
+  stage = str_extract(colnames(berg_counts.mat), pattern = '(?<=E[[:digit:]]{2}_).+(?=_[[:digit:]]{1,2})')
+) )
+```
+
+```{r dds}
+dds <- DESeqDataSetFromMatrix(countData = berg_counts.mat,
+                              colData = coldata,
+                              design = ~ stage)
+dds
+```
+
+```{r deseq-ing}
+dds.deseq <- DESeq(dds)
+resultsNames(dds.deseq)
+```
+
+Individual _pir_ genes which we use as examples of being highly upregulated in individual stages.
+
+```{r gamMale_v_asexMix}
+coef <- "stage_Gam.Male_vs_Asex.Mixed"
+dds.deseq.gamMale_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
+                                                  coef = coef,
+                                                  type = "apeglm")
+gamMale_v_asexMixed_df <- as.data.frame(
+  dds.deseq.gamMale_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% c('PBANKA_0317181'),]
+) %>% 
+  mutate(contrast = coef) %>% 
+  rownames_to_column(var = 'Geneid')
+```
+
+```{r}
+coef <- "stage_Liv.Meroz_vs_Asex.Mixed"
+res <- results(dds.deseq,
+               name = 'stage_Liv.Meroz_vs_Asex.Mixed',
+               cooksCutoff = FALSE)
+dds.deseq.livMeroz_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
+                                                  coef = coef,
+                                                  res = res,
+                                                  type = "apeglm")
+
+livMeroz_v_asexMixed_df <- as.data.frame(
+  dds.deseq.livMeroz_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% c('PBANKA_0100500',
+                                                                                              'PBANKA_0600031'),]) %>%  
+  mutate(contrast = coef) %>% 
+  rownames_to_column(var = 'Geneid')
+```
+
+```{r asexRing_v_asexMixed}
+coef <- 'stage_Asex.Ring_vs_Asex.Mixed'
+
+dds.deseq.asexRing_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
+                                                  coef = coef,
+                                                  type = "apeglm")
+asexRing_v_asexMixed_df <- as.data.frame(
+  dds.deseq.asexRing_v_asexMixed.lfcShr[rownames(dds.deseq.asexRing_v_asexMixed.lfcShr) %in% c('PBANKA_1300200'),]
+) %>% 
+  mutate(contrast = coef) %>% 
+    rownames_to_column(var = 'Geneid')
+```
+
+
+```{r}
+dds$stage <- relevel(dds$stage, ref = 'Gam-Male')
+dds.maleGam.deseq <- DESeq(dds)
+resultsNames(dds.maleGam.deseq)
+```
+
+```{r}
+coef <- "stage_Liv.Meroz_vs_Gam.Male"
+res <- results(dds.maleGam.deseq,
+               name = 'stage_Liv.Meroz_vs_Gam.Male',
+               cooksCutoff = FALSE)
+dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr <- lfcShrink(dds.maleGam.deseq, 
+                                                         coef = coef,
+                                                         res= res,
+                                                         type = "apeglm")
+
+(livMeroz_v_gamMale_df <- as.data.frame(
+  dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr[rownames(dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr) %in% c('PBANKA_0317181',
+                                                                                                           'PBANKA_0100500',
+                                                                                                           'PBANKA_0600031'),]
+  ) %>%  
+  mutate(contrast = coef) %>% 
+    rownames_to_column(var = 'Geneid'))
+```
+
+
+```{r}
+(deseq_stats <- bind_rows(livMeroz_v_gamMale_df, 
+          as.data.frame(gamMale_v_asexMixed_df),
+          as.data.frame(livMeroz_v_asexMixed_df)) %>% 
+  mutate(FDR = p.adjust(pvalue, 
+                        method = 'fdr')) %>% 
+  select(-c(lfcSE, 
+            padj, 
+            pvalue)))
+```
+
+```{r save_stats_df}
+write_xlsx(deseq_stats, 
+           'SupplementaryInformation4_Stats_DESEQ_berghei.xlsx')
+write.csv(deseq_stats, 
+           'SupplementaryInformation4_Stats_DESEQ_berghei.csv')
+```
+

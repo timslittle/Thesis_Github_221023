@@ -1,0 +1,988 @@
+---
+title: "Manuscript_Github_ancestral_pir_210801"
+author: "Timothy Little"
+date: "08/01/2021"
+output: 
+  html_document:
+      toc: true
+      number_sections: true
+      toc_float: true
+---
+  
+Got the 19 individual orthologs of PBANKA_0100500 from PlasmoDB, did orthology transformation twice to get everything. Then added the PccCB ortholog = 20 genes.
+With the 20 genes did a MUSCLE (v3.8.31) alignment, PhyML (v3.1)* building with LG model 100 bootstrap replicates, on SEAVIEW v4.7. 
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = FALSE, message = FALSE)
+knitr::opts_knit$set(root.dir = 
+                       "/Users/littlet/Dropbox (The Francis Crick)/Data/Manuscript_pirAnalysis_Github/AncestralPir/AnalysisCode")
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r load_packages}
+library('treeio') # Download trees from various formats
+#May need to install ggtree from Github directly due to a recent bug: remotes::install_github("YuLab-SMU/ggtree")
+library('ggtree') # Draw phylogenetic trees with ggplot
+library('ggstance')
+library('ggnewscale')
+library('plotly')
+library('ComplexHeatmap')
+library('circlize') #for ColorRamp2 function
+library('ggplot2')
+library('data.table')
+library('gridExtra')
+library('tibble')
+library('stringr')
+library('cowplot')
+library('kableExtra')
+library('viridis') # color palettes
+library('RColorBrewer') # color palettes
+library('corrplot')
+library('reshape2')
+library('cluster')    # clustering algorithms
+library('factoextra') # clustering algorithms & visualization
+library('ggfortify') # so ggplot understands prcomp objects
+library('readxl') # for reading in Excel spreadsheets
+library('readr') # for reading in everything else
+# library('tidyverse')
+library('dplyr')
+
+#Colour blind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+```{r function_uniquify}
+uniquify <- function(vector_names, first_one = TRUE){
+  new_vector <- c()
+  df_num <- data.frame(names = unique(vector_names), rep = 1)
+  if(first_one){
+    duplicated_names <- unique(vector_names[duplicated(vector_names)])
+  }else{
+    duplicated_names <- c()
+  }
+  for(i in 1:length(vector_names)){
+    if(vector_names[i] %in% duplicated_names|!first_one){
+    name <- paste(vector_names[i],
+                  df_num$rep[match(vector_names[i], df_num$names)],
+                  sep = '_')
+    #Increase rep counter
+    df_num$rep[match(vector_names[i], df_num$names)] <- df_num$rep[match(vector_names[i], df_num$names)] + 1
+    new_vector[i] <- name
+    }else{
+      new_vector[i] <- vector_names[i]
+    }
+  }
+  new_vector
+}
+```
+
+```{r tpm_function}
+tpm = function(count_data, lengths) {
+  
+  #Print an error if the id columns do not match
+  # first if statement to test that both have a GeneID column
+  if(any(grepl(colnames(lengths), 
+               pattern = 'id', 
+               ignore.case = T)) == T & any(grepl(colnames(count_data), 
+                                                  pattern = 'Geneid', 
+                                                  #This needs to be Geneid when some of the samples have 'id' in them
+                                                  ignore.case = T)) == T){
+    if(all(count_data[grep(colnames(count_data), 
+                           pattern = 'Geneid', ignore.case = T)] == lengths[grep(colnames(lengths), 
+                                                                             pattern = 'id', ignore.case = T)])) {
+      print('Count data and length gene ids both match')
+    } else {
+      print('Warning:Count data and length gene ids DO NOT MATCH')
+    }
+  } else {
+    print('Count data and/or length table supplied do not have an id column, 
+          make sure they are ordered correctly')
+  }
+  
+  #Remove the id column from supplied count_data
+  if(any(grepl(colnames(count_data), pattern = 'Geneid',ignore.case = TRUE))){
+    gene_names <- count_data[,grep(colnames(count_data), pattern = 'Geneid', ignore.case = TRUE)]
+    counts_tpm <- count_data[,-grep(colnames(count_data), pattern = 'Geneid', ignore.case = TRUE)]
+  }else{
+    counts_tpm <- count_data}
+  
+  #Remove the id column from supplied lengths
+  if(any(grepl(colnames(lengths), pattern = 'id', ignore.case = TRUE))){
+    lengths.table = lengths[,grep(colnames(lengths), pattern = 'length', ignore.case = T)]
+  }else{
+    lengths.table <- lengths}
+  #Making lengths.table a matrix sometimes throws up problems
+  lengths.table = as.matrix(lengths.table)
+  #This may make lengths.table a vector which can bring up some dimension problems in the following for loop
+  
+  #Now for the actual calculation
+  rpm <- counts_tpm
+  for (i in 1:dim(counts_tpm)[2]) {
+    for (j in 1:dim(counts_tpm)[1]) {
+      rpm[j,i] <- (counts_tpm[j,i]/(lengths.table[j]/1000))
+    }
+    scale.factor <- sum(rpm[,i])/(1E6)
+    counts_tpm[,i] <- apply(rpm[,i,drop=F],1,function(x){x/scale.factor})
+  }
+  colnames(counts_tpm) <- 'tpm'
+  if(any(grepl(colnames(count_data), pattern = 'Geneid', ignore.case = T)) == T){
+    counts_tpm = bind_cols(count_data[,grep(colnames(count_data), 
+                                            pattern = 'Geneid', 
+                                            ignore.case = T), 
+                                      drop = FALSE],
+                           counts_tpm)
+  } 
+  return(counts_tpm)
+}
+```
+
+```{r function_get_ecdf_percentile}
+ecdf_percentile <- function(df_tpm){
+  Fn <- ecdf(
+    unlist( #To convert into an atomic vector that ecdf will like.
+      select_at(
+        df_tpm,
+        vars(
+          matches('med_fpkm|med_tpm|^tpm$') #Default matches behaviour is ignore.case = TRUE
+        ) #Could be med_fpkm or med_tpm.
+      )
+    )
+  )
+  #Using a lapply to make a list in case there are multiple ancestral genes.
+  list_percentile <- lapply(
+    df_tpm$Geneid[
+      df_tpm$ancestral_ortholog == 1
+      ],
+    function(ancestor_gene){
+      #For debugging
+      # ancestor_gene <- "PCHCB_0101200"
+      list(
+        Fn(
+          filter(df_tpm, Geneid %in% ancestor_gene) %>% 
+            select_at(
+              vars(
+                matches('med_fpkm|med_tpm|^tpm$')
+              ) #Could be med_fpkm or med_tpm
+            ) 
+        )
+      )
+    }
+  )
+  #Create data.frame of the output
+  gene_percentile_df <- data.frame(
+    Geneid = df_tpm$Geneid[
+      df_tpm$ancestral_ortholog ==1
+      ],
+    percentile = unlist(
+      lapply(
+        list_percentile, `[`, 1
+      )
+    )
+  )
+  plot(Fn)
+  return(gene_percentile_df)
+}
+# ecdf_percentile(cyno_genes_fpkm)
+```
+
+```{r get_phylip_tree}
+phylog <- read.tree('PlasmoDBv48_GenesByOrthologs_ancestralpir_withPccCBandPberghei-PhyML_100bootstrap_tree.phylip')
+```
+
+```{r removing_unncessary_tips}
+phylog <- drop.tip(phylog, 
+                   tip = c("PKNOH_S130216000",
+                           "YYE_04766",
+                           "YYG_04764",
+                           # "PY17X_0102100",
+                           "PY06119",
+                           'PYYM_0101500',
+                           'PVL_110036700')
+)
+```
+
+
+```{r gene_and_species_names}
+gene_names <- phylog$tip.label %>% 
+  str_split_fixed(pattern = '_P.', n =2) %>% 
+  .[,1]
+write(gene_names,
+            file = 'gene_names_ancestral_includedintree.txt',
+            sep = '\n')
+phylog$old.tip.label <- phylog$tip.label
+
+#Download the gene info with species names and add in the PccCB name.
+ortho_gene_info_tbl <- rbind(
+  read_csv('PlasmoDBv48_ancestralpir_orthologs_GenesByOrthologs_Summary.csv') %>% 
+    select(c('Gene ID', Organism)) %>% 
+    dplyr::rename(Geneid = 'Gene ID'),
+  data.frame(Geneid = 'PCHCB_0101200',
+             'Organism' = 'Plasmodium chabaudi chabaudi CB')
+)
+
+phylog$tip.label <- ortho_gene_info_tbl$Organism[match(phylog$old.tip.label, 
+                                                       ortho_gene_info_tbl$Geneid)] %>% 
+  str_replace(pattern = 'Plasmodium ', 
+              replacement = 'P. ' ) %>% 
+  str_replace(pattern = '(?<!cynomolgi) strain.+| curtisi|(?<=chabaudi) chabaudi|(?<=yoelii) yoelii', 
+              replacement = '') %>% 
+  str_extract(pattern = 'P. [[:lower:]]+(-like)?( [[:lower:]]+)?( M| B| CB| Sal-1| P01|)') %>% 
+  gsub(pattern = 'chabaudi$', 
+       replacement = 'chabaudi AS') %>% 
+  gsub(pattern = 'strain ',
+       replacement = '') %>% 
+  uniquify(first_one = TRUE) 
+#There shouldn't be any extra ones now
+ovale_gene_names <- str_subset(gene_names, 
+                               pattern = 'Poc')
+```
+
+'A glance of the blood stage transcriptome of a Southeast Asian Plasmodium ovale isolate'
+
+ovale data is in TPM
+
+```{r ovale_transcriptome_data}
+ovale_path <- '../other_species_transcriptome_data/Brashear_2019_ovale_transcriptome_journal.pntd.0007850.s008.xlsx'
+ovale <- read_xlsx(ovale_path, sheet = 1)
+ovale <- ovale %>% 
+  mutate(ancestral_ortholog = ifelse(Gene %in% gene_names, 1, 0))
+#Sanity test
+(ovale$ancestral_ortholog %>% sum) == 9
+
+ovale_anc_v_nonanc <- ovale %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise(med_tpm = median(TPM),
+                   mean_tpm = mean(TPM),
+                   max_tpm = max(TPM),
+                   min_tpm = min(TPM))
+#Median TPM of non-ancestral pirs
+ovale_nonanc_medtpm <- ovale_anc_v_nonanc %>% filter(ancestral_ortholog == 0) %>% .$med_tpm
+#Ratio of the TPM of the ancestrals to the median non-ancestrals
+ovale_ancestral <- ovale %>% 
+  filter(ancestral_ortholog ==1) %>% 
+  mutate(Geneid = Gene,
+         ratio = TPM/ovale_nonanc_medtpm,
+         median_tpm = TPM) %>% 
+  select(Geneid, ratio, median_tpm)
+```
+
+```{r ovale_percentile}
+#Calculate the percentile of the ancestral v other pirs
+
+ovale %>% 
+  filter(str_detect(Description, pattern = 'PIR')) %>% 
+  group_by(Description) %>% 
+  dplyr::summarise(n())
+
+ovale[ovale$ancestral_ortholog == 1,]
+  
+ovale_tpm_collated_pir <- ovale  %>% 
+  filter(str_detect(Description, pattern = 'PIR') | ancestral_ortholog == 1) %>% 
+  filter(!str_detect(Description, pattern = 'pseudo') | ancestral_ortholog == 1) %>% 
+  select(c(Gene, Description, ancestral_ortholog, TPM)) %>% 
+  dplyr::arrange(desc(TPM))
+
+#ecdf produces a function which can be used to find the percentile that a value is present in in a distribution
+Fn_ovale <- ecdf(ovale_tpm_collated_pir$TPM)
+plot(Fn_ovale)
+list_ovale_percantile <- lapply(ovale_tpm_collated_pir$Gene[ovale_tpm_collated_pir$ancestral_ortholog == 1], 
+                                function(ancestr){
+                                  list(Fn_ovale(filter(ovale_tpm_collated_pir, Gene %in% ancestr)$TPM))
+                                })
+ovale_percentile <- data.frame(Geneid = ovale_tpm_collated_pir$Gene[ovale_tpm_collated_pir$ancestral_ortholog == 1],
+                               percentile = unlist(lapply(list_ovale_percantile, `[`, 1)))
+
+#Percentile for all genes
+# Fn_ovale_all <- ecdf(ovale$TPM)
+# plot(Fn_ovale_all)
+# list_ovale_percantile_all <- lapply(ovale$Gene[ovale$ancestral_ortholog == 1], 
+#                                 function(ancestr){
+#                                   list(Fn_ovale_all(filter(ovale, Gene %in% ancestr)$TPM))
+#                                 })
+# (ovale_percentile_all <- data.frame(Geneid = ovale$Gene[ovale$ancestral_ortholog == 1],
+#                                percentile = unlist(lapply(list_ovale_percantile_all, `[`, 1))))
+
+#Wow must genes in the genome are expressed super low (52% expressed under 25 TPM)
+# nrow(filter(ovale, TPM < 25)) /72.80
+
+# ecdf_percentile(mutate(ovale, med_tpm = TPM, Geneid = Gene))
+ovale_percentile_all <- ecdf_percentile(mutate(ovale, Geneid = Gene))
+
+
+```
+
+Data from eLife _A comparative transcriptomic analysis of replicating and dormant liver stages of the relapsing malaria parasite Plasmodium cynomolgi_ 2017.
+
+Note: FPKM
+
+```{r cynomolgi_transcriptome_data}
+cyno_path <- list.files('../other_species_transcriptome_data/', 
+                        pattern = 'cynomolgi',
+                        full.names = TRUE)
+cyno <- read_xlsx(cyno_path, sheet = 1, skip = 3)
+colnames(cyno) <- make.names(colnames(cyno))
+apply(cyno %>% select_at(vars(matches('Sz|Hz'))), 2, sum)
+cyno <- cyno %>% 
+  mutate(ancestral_ortholog = ifelse(Gene.Id %in% gene_names,1,0))
+(cyno$ancestral_ortholog %>% sum)
+cyno_anc_v_nonanc <- cyno %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise_at(vars(matches('Sz\\.|Hz\\.')), 
+                      list(~median(.))) %>% 
+  melt(id.vars = 'ancestral_ortholog') %>% 
+  #gsub to remove the numbers for easy summarising across the replicates
+  mutate(stage = gsub(variable, pattern = '.[[:digit:]]', replacement = '')) %>% 
+  group_by(ancestral_ortholog, stage) %>% 
+  dplyr::summarise(median = median(value),
+            standev = sd(value))
+cyno_schiz_ratio <- filter(cyno_anc_v_nonanc, 
+                           ancestral_ortholog == 1) %>% 
+  filter(stage == 'Sz') %>% 
+  .$median / 
+  filter(cyno_anc_v_nonanc, ancestral_ortholog == 0) %>% 
+  filter(stage == 'Sz') %>% 
+  .$median
+cyno_hyp_ratio <- filter(cyno_anc_v_nonanc, ancestral_ortholog == 1) %>% 
+  filter(stage == 'Hz') %>% 
+  .$median / 
+  filter(cyno_anc_v_nonanc, ancestral_ortholog == 0) %>% 
+  filter(stage == 'Hz') %>% 
+  .$median
+cyno_data <- data.frame(Geneid = cyno$Gene.Id[which(cyno$ancestral_ortholog == 1)],
+                        ratio = cyno_schiz_ratio,
+                        median_tpm = filter(cyno_anc_v_nonanc, ancestral_ortholog == 1) %>% 
+                          filter(stage == 'Sz') %>% 
+                          .$median)
+```
+
+```{r cyno_percentile}
+#Calculate the percentile of the ancestral v other pirs
+cyno_gene_path <- list.files('../other_species_transcriptome_data/', 
+                        pattern = 'PlasmoDBv46_PcynoM',
+                        full.names = TRUE)
+cyno_genes <- read_csv(cyno_gene_path) %>% 
+  mutate(Geneid = `Gene ID`,
+         Description = `Product Description`) %>% 
+  select(c(Geneid, Description))
+
+cyno_genes %>% 
+  filter(str_detect(Description, pattern = 'PIR')) %>% 
+  group_by(Description) %>% 
+  dplyr::summarise(n())
+
+cyno_genes %>% 
+  filter(str_detect(Description, pattern = 'pseuodgene'))
+
+cyno_genes_fpkm <- cyno %>% 
+  select_at(vars(matches('^Gene|Average'))) %>% 
+  melt(id.vars = 'Gene.Id') %>% 
+  group_by(Gene.Id) %>% 
+  dplyr::summarise(med_tpm = median(value),
+                   sd_tpm = sd(value)) %>% 
+  mutate(Description = cyno_genes$Description[match(Gene.Id, cyno_genes$Geneid)]) %>% 
+  mutate(ancestral_ortholog = ifelse(Gene.Id %in% gene_names,1,0)) %>% 
+  mutate(Geneid = Gene.Id)
+
+cyno_pir_fpkm <- cyno_genes_fpkm  %>% 
+  filter(str_detect(Description, pattern = 'PIR') | ancestral_ortholog == 1) %>% 
+  filter(!str_detect(Description, pattern = 'pseudo|fragment') | ancestral_ortholog == 1) %>% 
+  select(c(Geneid, Description, ancestral_ortholog, med_tpm)) %>% 
+  dplyr::arrange(desc(med_tpm))
+cyno_pir_fpkm[which(cyno_pir_fpkm$Geneid %in% gene_names),]
+cyno_pir_fpkm[which(cyno_pir_fpkm$ancestral_ortholog == 1),]
+
+#The percentile among the pir genes
+Fn_cyno <- ecdf(cyno_pir_fpkm$med_tpm)
+plot(Fn_cyno)
+list_cyno_percantile <- lapply(cyno_pir_fpkm$Geneid[cyno_pir_fpkm$ancestral_ortholog == 1], 
+                                function(ancestr){
+                                  list(Fn_cyno(filter(cyno_pir_fpkm, Geneid %in% ancestr)$med_tpm))
+                                })
+cyno_percentile <- data.frame(Geneid = cyno_pir_fpkm$Geneid[cyno_pir_fpkm$ancestral_ortholog == 1],
+                              percentile = unlist(lapply(list_cyno_percantile, `[`, 1)))
+
+#The percentile among all genes
+Fn_cyno_all <- ecdf(cyno_genes_fpkm$med_tpm)
+plot(Fn_cyno_all)
+list_cyno_percentile_all <- lapply(cyno_genes_fpkm$Geneid[cyno_genes_fpkm$ancestral_ortholog == 1], 
+                                   function(ancestr){
+                                     list(Fn_cyno_all(filter(cyno_genes_fpkm, Geneid %in% ancestr)$med_tpm))
+                                   })
+cyno_percentile_all <- data.frame(Geneid = cyno_genes_fpkm$Geneid[cyno_genes_fpkm$ancestral_ortholog == 1],
+                              percentile = unlist(lapply(list_cyno_percentile_all, `[`, 1)))
+
+ecdf_percentile(cyno_genes_fpkm)
+
+```
+
+Vivax data from Siegal et al 2020 SciRep 'Analysis of Plasmodium vivax schizont transcriptomes from field isolates reveals heterogeneity of expression of genes involved in host-parasite interactions'.
+
+* FPKM data. 
+* Clinical isolates.
+
+```{r}
+vivax_genes_fpkm <- read_xlsx('../other_species_transcriptome_data/Siegal2020_vivax-schizont-rnaseq_41598_2020_73562_MOESM2_ESM.xlsx',
+          sheet = 3,
+          skip = 1,
+          col_names = TRUE) %>% 
+  mutate(Geneid = gene_id,
+         rpkm = `mean RPKM`,
+         ancestral_ortholog = ifelse(gene_id %in% gene_names,1,0)) %>% 
+  select(Geneid, 
+         rpkm,
+         ancestral_ortholog) 
+
+# sum(vivax_genes_fpkm$ancestral_ortholog) == 1
+
+group_by(vivax_genes_fpkm, 
+         ancestral_ortholog) %>% 
+  dplyr::summarise(median = median(rpkm),
+                   standev = sd(rpkm))
+
+#The percentile among all genes
+Fn_vivax_all <- ecdf(vivax_genes_fpkm$rpkm)
+plot(Fn_vivax_all)
+list_vivax_percentile_all <- lapply(vivax_genes_fpkm$Geneid[vivax_genes_fpkm$ancestral_ortholog == 1], 
+                                   function(ancestr){
+                                     list(Fn_vivax_all(filter(vivax_genes_fpkm, Geneid %in% ancestr)$rpkm))
+                                   })
+vivax_percentile_all <- data.frame(Geneid = vivax_genes_fpkm$Geneid[vivax_genes_fpkm$ancestral_ortholog == 1],
+                              percentile = unlist(lapply(list_vivax_percentile_all, `[`, 1)))
+
+```
+
+P. chabaudi chabaudi CB data from Lim et al, 2019.
+
+```{r cb_transcriptome_data}
+cb_path <- list.files('../other_species_transcriptome_data/', 
+                        pattern = 'PccCB_rnaseq',
+                        full.names = TRUE)
+cb <- read_delim(cb_path, delim = '\t')
+apply(cb[,-1], 2, sum) #FPKM, do not add up to 1e6, although they are close
+cb <- cb %>% 
+  mutate(Geneid = id) %>% 
+  select(-id) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+(cb$ancestral_ortholog %>% sum)
+cb_anc_v_nonanc <- cb %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise_at(vars(matches('CB')), 
+                      list(~median(.))) %>% 
+  melt(id.vars = 'ancestral_ortholog') %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise(median = median(value),
+            standev = sd(value))
+cb_data <- data.frame(Geneid = cb$Geneid[which(cb$ancestral_ortholog == 1)],
+                      ratio = cb_anc_v_nonanc$median[which(cb_anc_v_nonanc$ancestral_ortholog == 1)]/
+                        cb_anc_v_nonanc$median[which(cb_anc_v_nonanc$ancestral_ortholog == 0)],
+                      median_tpm = cb_anc_v_nonanc$median[which(cb_anc_v_nonanc$ancestral_ortholog == 1)])
+```
+
+Used ftp://ftp.sanger.ac.uk/pub/project/pathogens/Plasmodium/chabaudi/CB_v2/ for the gene names
+
+```{r cb_percentile}
+#Calculate the percentile of the ancestral v other pirs
+cb_gene_path <- list.files('../other_species_transcriptome_data/', 
+                        pattern = 'PccCB_gene',
+                        full.names = TRUE)
+
+read_delim(cb_gene_path, delim = '\t')[!(apply((apply(read_delim(cb_gene_path, delim = '\t'),
+             1,
+             str_extract,
+             pattern = 'pseudo') %>%
+         is.na),
+      2, all)),] #Are there any pseudo columns? Yes : 'attributes'
+
+cb_genes <- read_delim(cb_gene_path, delim = '\t', 
+                       col_names = c('Geneid', 'Description')) 
+
+cb_genes %>% 
+  filter(str_detect(Description, pattern = 'PIR|CIR|IR')) %>% 
+  group_by(Description) %>% 
+  dplyr::summarise(n())
+
+# cb_genes %>% 
+#   group_by(Description) %>% 
+#   dplyr::summarise(num = n()) %>% 
+#   dplyr::arrange(desc(num))
+
+cb_genes_fpkm <- cb  %>% 
+  select_at(vars(matches('TCB|Geneid'))) %>% 
+  melt(id.vars = 'Geneid') %>% 
+  group_by(Geneid) %>% 
+  dplyr::summarise(med_fpkm = median(value),
+                   sd_fpkm = sd(value)) %>% 
+  mutate(Description = cb_genes$Description[match(Geneid, cb_genes$Geneid)]) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0)) 
+
+cb_pir_fpkm <- cb_genes_fpkm  %>% 
+  filter(str_detect(Description, pattern = 'CIR|PIR') | ancestral_ortholog == 1) %>% 
+  filter(!str_detect(Description, pattern = 'pseudo|fragment') | ancestral_ortholog == 1) %>% 
+  select(c(Geneid, Description, ancestral_ortholog, med_fpkm)) %>% 
+  dplyr::arrange(desc(med_fpkm))
+cb_pir_fpkm[which(cb_pir_fpkm$Geneid %in% gene_names),]
+
+Fn_cb <- ecdf(cb_pir_fpkm$med_fpkm)
+plot(Fn_cb)
+list_cb_percantile <- lapply(cb_pir_fpkm$Geneid[cb_pir_fpkm$ancestral_ortholog == 1], 
+                                function(ancestr){
+                                  list(Fn_cb(filter(cb_pir_fpkm, Geneid %in% ancestr)$med_fpkm))
+                                })
+cb_percentile <- data.frame(Geneid = cb_pir_fpkm$Geneid[cb_pir_fpkm$ancestral_ortholog == 1],
+                            percentile = unlist(lapply(list_cb_percantile, `[`, 1)))
+
+ecdf_percentile(cb_pir_fpkm)
+cb_percentile_all <- ecdf_percentile(cb_genes_fpkm)
+
+```
+
+vinckei data from Ramaprasad 2019 'A fast and cost-effective microsampling protocol incorporating reduced animal usage for time-series transcriptomics in rodent malaria parasites'
+
+PlasmoDB v48 is not updated enough to have the vinckei assembly that the paper used. By BLASTing the PlasmoDB sequence against the PvvCY assembly on https://www.ncbi.nlm.nih.gov/assembly/GCA_900681995.1 and using the gff file from ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/900/681/995/GCA_900681995.1_PVVCY_v1 my guess is that it is this gene:
+
+LR215057.1	EMBL	gene	71066	72501	.	-	.	ID=gene-PVVCY_0100190;Name=PVVCY_0100190;gbkey=Gene;gene_biotype=protein_coding;locus_tag=PVVCY_0100190
+
+corresponding CDS data:
+\>lcl|LR215057.1_cds_VEV54408.1_19 \[locus_tag=PVVCY_0100190\] \[protein=PIR protein CIR protein\] \[protein_id=VEV54408.1\] [location=complement(join(71066..71140,71320..72291,72493..72501))] \[gbkey=CDS\]
+
+Also have downloaded the features table from the same ftp site as above.
+
+Is this TPM or FPKM? FPKM
+
+```{r vinck_data}
+vinck_path <- list.files('../other_species_transcriptome_data/', 
+                      #Use glob2rx to get the regex we want
+                      pattern = glob2rx('*vinckei*xlsx*'),
+                      full.names = TRUE)
+vinck <- read_xlsx(vinck_path, skip =1)
+select_at(vinck, vars(matches('[[:digit:]]h'))) %>% apply(., 2, sum)
+#Definitely FPKM
+vinck <- vinck %>% 
+  mutate(Geneid = gene_id) %>% 
+  select(-gene_id) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+(vinck$ancestral_ortholog %>% sum)
+vinck_anc_v_nonanc <- vinck %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise_at(vars(matches('[[:digit:]]h')), 
+                      list(~median(.))) %>% 
+  melt(id.vars = 'ancestral_ortholog') %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise(median = median(value),
+            standev = sd(value))
+vinck_data <- data.frame(Geneid = vinck$Geneid[which(vinck$ancestral_ortholog == 1)],
+                        ratio = vinck_anc_v_nonanc$median[which(vinck_anc_v_nonanc$ancestral_ortholog == 1)]/
+                        vinck_anc_v_nonanc$median[which(vinck_anc_v_nonanc$ancestral_ortholog == 0)],
+                        median_tpm = vinck_anc_v_nonanc$median[which(vinck_anc_v_nonanc$ancestral_ortholog == 1)])
+```
+  
+```{r vinckei_percentile}
+#Calculate the percentile of the ancestral v other pirs
+vinck_gene_path <- list.files('../other_species_transcriptome_data/', 
+                        pattern = 'vinckei_feature',
+                        full.names = TRUE)
+
+read_delim(vinck_gene_path, delim = '\t')[!(apply((apply(read_delim(vinck_gene_path, delim = '\t'),
+             1,
+             str_extract,
+             pattern = 'pseudo') %>%
+         is.na),
+      2, all)),] #Are there any pseudo columns? Yes : 'attributes'
+
+vinck_genes <- read_delim(vinck_gene_path, delim = '\t') %>% 
+  mutate(Geneid = locus_tag,
+         Description = ifelse(is.na(attributes),
+                              name,
+                              paste(name, attributes))) %>% 
+  select(c(Geneid, Description)) %>% 
+  filter(!is.na(Description))
+
+vinck_genes %>% filter(Geneid %in% 'PVVCY_0200040')
+
+vinck_genes %>% 
+  filter(str_detect(Description, pattern = 'PIR|CIR|IR')) %>% 
+  group_by(Description) %>% 
+  dplyr::summarise(n())
+
+vinck_genes_fpkm <- vinck %>% 
+  select_at(vars(matches('^[[:digit:]]+h|Geneid'))) %>% 
+  melt(id.vars = 'Geneid') %>% 
+  group_by(Geneid) %>% 
+  dplyr::summarise(med_fpkm = median(value),
+                   sd_fpkm = sd(value)) %>% 
+  mutate(Description = vinck_genes$Description[match(Geneid, vinck_genes$Geneid)]) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0)) 
+
+vinck_pir_fpkm <- vinck_genes_fpkm  %>% 
+  filter(str_detect(Description, pattern = 'PIR') | ancestral_ortholog == 1) %>% 
+  filter(!str_detect(Description, pattern = 'pseudo|fragment') | ancestral_ortholog == 1) %>% 
+  select(c(Geneid, Description, ancestral_ortholog, med_fpkm)) %>% 
+  dplyr::arrange(desc(med_fpkm))
+vinck_pir_fpkm[which(vinck_pir_fpkm$Geneid %in% gene_names),]
+
+Fn_vinck <- ecdf(vinck_pir_fpkm$med_fpkm)
+plot(Fn_vinck)
+list_vinck_percantile <- lapply(vinck_pir_fpkm$Geneid[vinck_pir_fpkm$ancestral_ortholog == 1], 
+                                function(ancestr){
+                                  list(Fn_vinck(filter(vinck_pir_fpkm, Geneid %in% ancestr)$med_fpkm))
+                                })
+vinck_percentile <- data.frame(Geneid = vinck_pir_fpkm$Geneid[vinck_pir_fpkm$ancestral_ortholog == 1],
+                               percentile = unlist(lapply(list_vinck_percantile, `[`, 1)))
+ecdf_percentile(vinck_pir_fpkm)
+vinck_percentile_all <- ecdf_percentile(vinck_genes_fpkm)
+
+```
+
+This distribution of gene expression is different compared to that of the other samples..
+
+##Coatneyi data
+
+'Distinct amino acid and lipid perturbations characterize acute versus chronic malaria'
+  
+from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE103259
+
+Want to convert the counts from this file into TPM with the transcript lengths. 
+
+_P. coatneyi_ _ancestral pir_ is not annotated as a _pir_ !
+              
+```{r coatneyi_data}
+coat_path <- list.files('../other_species_transcriptome_data/', 
+                      pattern = '2019_coatneyi_rawcounts',
+                      full.names = TRUE)
+coat <- read_xlsx(coat_path, skip =3, sheet  =2)
+colnames(coat)[1:2] <- c('gene', 'Geneid')
+coat <- coat %>% 
+  select(-gene) %>% 
+  arrange(Geneid) 
+#apply(coat[,-1], 2, sum)
+plot(apply(coat[,-1], 2, sum), apply(coat[,-1], 2, function(x) sum(x > 0)),
+     main = 'coatneyi data features detected vs total counts',
+     xlab = 'Total counts of sample',
+     ylab = 'Total detected genes (>0 counts) per sample')
+#Great ranges in the sum of features counted in each sample, should filter out low ones
+coat <- coat[,c(TRUE, apply(coat[,-1], 2, sum) > 1e7)]
+
+coat_transcript_lengths_path <- list.files('../../genomes_genes_annotations/', 
+                      pattern = 'PlasmoDBv48_Pcoatneyi',
+                      full.names = TRUE)
+coat_transcript_lengths <- read_csv(coat_transcript_lengths_path) %>% 
+  mutate(Geneid = `Gene ID`) %>% 
+  select(c(Geneid, `Transcript Length`))
+
+coat_tpm <- tpm(coat, 
+                coat_transcript_lengths)
+
+apply(coat_tpm[,-1], 
+      2, 
+      sum)
+
+coat_tpm <- coat_tpm %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+
+(coat_tpm$ancestral_ortholog %>% sum)
+coat_anc_v_nonanc <- coat_tpm %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise_at(vars(matches('tpm')), 
+                      list(~median(.))) %>% 
+  melt(id.vars = 'ancestral_ortholog') %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise(median = median(value),
+                   standev = sd(value))
+coat_data <- data.frame(Geneid = coat_tpm$Geneid[which(coat_tpm$ancestral_ortholog == 1)],
+                        ratio = coat_anc_v_nonanc$median[which(coat_anc_v_nonanc$ancestral_ortholog == 1)]/
+                          coat_anc_v_nonanc$median[which(coat_anc_v_nonanc$ancestral_ortholog == 0)],
+                        median_tpm = coat_anc_v_nonanc$median[which(coat_anc_v_nonanc$ancestral_ortholog == 1)])
+```
+
+```{r coatneyi_percentile}
+#Calculate the percentile of the ancestral v other pirs
+coat_gene_info <- read_csv(coat_transcript_lengths_path) %>% 
+  mutate(Geneid = `Gene ID`) %>% 
+  select(Geneid, `Product Description`)
+
+coat_gene_info %>% 
+  filter(str_detect(`Product Description`, pattern = 'KIR')) %>% 
+  group_by(`Product Description`) %>% 
+  dplyr::summarise(n())
+
+coat_tpm_collated <- coat_tpm %>% 
+  melt(id.vars = 'Geneid') %>% 
+  group_by(Geneid) %>% 
+  dplyr::summarise(med_tpm = median(value),
+                   sd_tpm = sd(value)) %>% 
+  mutate(Product = coat_gene_info$`Product Description`[match(Geneid, coat_gene_info$Geneid)]) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+
+coat_tpm_collated_pir <- coat_tpm_collated  %>% 
+  filter(str_detect(Product, pattern = 'KIR') | ancestral_ortholog == 1) %>% 
+  dplyr::arrange(desc(med_tpm))
+
+Fn_coat <- ecdf(coat_tpm_collated_pir$med_tpm)
+
+plot(Fn_coat)
+
+list_coat_percantile <- lapply(coat_tpm_collated_pir$Geneid[coat_tpm_collated_pir$ancestral_ortholog == 1], 
+                               function(ancestr){
+                                 list(Fn_coat(filter(coat_tpm_collated_pir, Geneid %in% ancestr)$med_tpm))
+                               })
+coat_percentile <- data.frame(Geneid = coat_tpm_collated_pir$Geneid[coat_tpm_collated_pir$ancestral_ortholog == 1],
+                               percentile = unlist(lapply(list_coat_percantile, `[`, 1)))
+
+ecdf_percentile(coat_tpm_collated_pir)
+coat_percentile_all <- ecdf_percentile(coat_tpm_collated)
+```
+
+berghei data - using Brugat et al., 2017
+
+Highest expressed pir gene of any kind is 'PBANKA_0201250' - a pseudogene.
+
+```{r berghei_data}
+berg_path <- list.files('../other_species_transcriptome_data/',
+                        pattern = 'Expt02',
+                        recursive = TRUE,
+                        full.names = TRUE)
+berg <- read_csv(berg_path) %>%  
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+(berg$ancestral_ortholog %>% sum)
+berg_anc_v_nonanc <- berg %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise_at(vars(-matches('Geneid')), 
+                      list(~median(.))) %>% 
+  melt(id.vars = 'ancestral_ortholog') %>% 
+  group_by(ancestral_ortholog) %>% 
+  dplyr::summarise(median = median(value),
+            standev = sd(value))
+berg_data <- data.frame(Geneid = berg$Geneid[which(berg$ancestral_ortholog == 1)],
+                        ratio = berg_anc_v_nonanc$median[which(berg_anc_v_nonanc$ancestral_ortholog == 1)]/
+                          berg_anc_v_nonanc$median[which(berg_anc_v_nonanc$ancestral_ortholog == 0)],
+                        median_tpm = berg_anc_v_nonanc$median[which(berg_anc_v_nonanc$ancestral_ortholog == 1)])
+```
+
+```{r berghei_percentile}
+
+berg_descr <- read_csv('../../standard_files/PlasmoDb-47_beta_Pberghei_GenesByTaxon_Summary.csv') %>% 
+  mutate(Geneid = `Gene ID`,
+         Description = `Product Description`) %>% 
+  select(c(Geneid, Description))
+berg_pir <- berg %>% 
+  melt(id.vars = 'Geneid') %>% 
+  group_by(Geneid) %>% 
+  dplyr::summarise(med_tpm = median(value),
+            sd_tpm = sd(value)) %>% 
+  mutate(Description = berg_descr$Description[match(Geneid, berg_descr$Geneid)]) %>% 
+  filter(str_detect(Description, pattern = 'PIR')) %>% 
+  filter(str_detect(Description, pattern = 'pseudo|fragment', negate = TRUE)) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0)) %>% 
+  dplyr::arrange(desc(med_tpm))
+
+Fn_bir <- ecdf(berg_pir$med_tpm)
+plot(Fn_bir)
+list_bir_percentile <- lapply(berg_pir$Geneid[berg_pir$ancestral_ortholog == 1], 
+                                function(ancestr){
+                                  list(Fn_bir(filter(berg_pir, Geneid %in% ancestr)$med_tpm))
+                                })
+bir_percentile <- data.frame(Geneid = berg_pir$Geneid[berg_pir$ancestral_ortholog == 1],
+                             percentile = unlist(lapply(list_bir_percentile, `[`, 1)))
+
+berg_percentile_all <- ecdf_percentile(
+  berg %>% 
+    melt(id.vars = 'Geneid') %>% 
+    group_by(Geneid) %>% 
+    dplyr::summarise(med_tpm = median(value),
+              sd_tpm = sd(value)) %>% 
+    mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+)
+```
+
+Py17XNL data from gametocytes (Hart ... Lindner et al 2019) 'Plasmodium male gametocyte development and transmission are critically regulated by the two putative deadenylases of the CAF1/CCR4/NOT complex'
+
+```{r yoelii_data}
+yoel_path <- list.files('..',
+                        pattern = 'Hart_2019_Pyeolii',
+                        recursive = TRUE,
+                        full.names = TRUE)
+#Something in the excel doc upsets read_xlsx so don't worry about the huge number of warnings..
+yoel_counts_full <- read_xlsx(yoel_path, 
+                         sheet = 2) %>% 
+  mutate(Geneid = GeneID...1,
+         Description = `[Product Description]`,
+         Counts = `489 Average`) %>% 
+  select(c(Geneid, Description, Counts)) %>% 
+  arrange(Geneid)
+
+yoel_counts_full %>%
+  filter(str_detect(Description, pattern = 'PIR|CIR|IR')) %>% 
+  group_by(Description) %>% 
+  dplyr::summarise(n())
+
+yoel_counts <- select(yoel_counts_full, -Description)
+
+yoel_lengths_path <- list.files('..',
+                                pattern = 'PlasmoDBv46_Pyoelii17X_',
+                                recursive = TRUE,
+                                full.names = TRUE)
+yoel_lengths <- read_csv(yoel_lengths_path) %>% 
+  mutate(Geneid = `Gene ID`,
+         length = `Transcript Length`) %>% 
+  select(c(Geneid, length))
+#One gene 'PY17X_0902700' has two different length transcripts - take median
+yoel_lengths %>% group_by(Geneid) %>% dplyr::summarise(n = n()) %>% dplyr::arrange(desc(n))
+
+#This gives 5074.5 so need to make sure that not having an integer count messes up things but it shouldn't
+yoel_lengths <- yoel_lengths %>% 
+  group_by(Geneid) %>% 
+  dplyr::summarise(length = median(length))
+nrow(yoel_lengths)
+nrow(yoel_counts)
+
+yoel_tpm <- tpm(count_data = yoel_counts, lengths = yoel_lengths)
+yoel_tpm <- yoel_tpm %>% 
+  mutate(Description = yoel_counts_full$Description[match(Geneid, 
+                                                          yoel_counts_full$Geneid)]) %>% 
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+
+yoel_tpm_pir <- yoel_tpm %>% 
+  filter(str_detect(Description, pattern = 'PIR|YIR') | ancestral_ortholog == 1) %>% 
+  filter(!str_detect(Description, pattern = 'pseudo|fragment') | ancestral_ortholog == 1) %>% 
+  dplyr::arrange(desc(tpm))
+
+Fn_yoel <- ecdf(yoel_tpm_pir$tpm)
+
+plot(Fn_yoel)
+
+list_yoel_percantile <- lapply(yoel_tpm_pir$Geneid[yoel_tpm_pir$ancestral_ortholog == 1], 
+                               function(ancestr){
+                                 list(Fn_yoel(filter(yoel_tpm_pir, Geneid %in% ancestr)$tpm))
+                               })
+yoel_percentile <- data.frame(Geneid = yoel_tpm_pir$Geneid[yoel_tpm_pir$ancestral_ortholog == 1],
+                               percentile = unlist(lapply(list_yoel_percantile, `[`, 1))) 
+yoel_percentile
+
+yoel_percentile_all <- ecdf_percentile(yoel_tpm)
+
+```
+
+```{r chabaudi_percentile}
+
+chab_info <- read_csv('../../standard_files/PlasmoDB-47_beta_Pchabaudichabaudi_GenesByTaxon_Summary.csv') %>% 
+  mutate(Geneid = `Gene ID`,
+         Description = `Product Description`) %>% 
+  select(c(Geneid, Description))
+
+chab_info %>% 
+  filter(str_detect(Description, pattern = 'IR')) %>% 
+  group_by(Description) %>% 
+  dplyr::summarise(n())
+
+chab_tpm <- read_xlsx('../other_species_transcriptome_data/Manuscript_Frontiers_SuppInfo_chabaudi_24h.xlsx',
+                      sheet = 'chab_TPM_avg_rMT') %>% 
+  melt(variable.name = 'stage', value.name = 'tpm') %>% 
+  group_by(Geneid) %>% 
+  dplyr::summarise(med_tpm = median(tpm),
+                sd_tpm = sd(tpm)) %>% 
+  mutate(Description = chab_info$Description[match(Geneid, 
+                                                       chab_info$Geneid)]) %>% 
+      mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0)) 
+
+chab_pir <- chab_tpm %>% 
+  filter(str_detect(Description, pattern = 'PIR|YIR') | ancestral_ortholog == 1) %>% 
+  filter(!str_detect(Description, pattern = 'pseudo|fragment') | ancestral_ortholog == 1) %>%
+  dplyr::arrange(desc(med_tpm))
+
+Fn_chab <- ecdf(chab_pir$med_tpm)
+plot(Fn_chab)
+list_chab_percentile <- lapply(chab_pir$Geneid[chab_pir$ancestral_ortholog == 1], 
+                                function(ancestr){
+                                  list(Fn_chab(filter(chab_pir, Geneid %in% ancestr)$med_tpm))
+                                })
+chab_percentile <- data.frame(Geneid = chab_pir$Geneid[chab_pir$ancestral_ortholog == 1],
+                            percentile = unlist(lapply(list_chab_percentile, `[`, 1)))
+
+chab_percentile_all <- ecdf_percentile(chab_tpm)
+```
+
+## Phylogenetic Tree / Heatmap of percentile compared to all genes
+
+```{r tree_heatmap_all-genes}
+
+ancestral_df <- bind_rows(cyno_percentile_all,
+                          ovale_percentile_all,
+                          cb_percentile_all,
+                          vinck_percentile_all,
+                          coat_percentile_all,
+                          yoel_percentile_all,
+                          berg_percentile_all,
+                          chab_percentile_all,
+                          vivax_percentile_all)
+ancestral_data <- lapply(phylog$old.tip.label, function(id){
+  #If any of the pattern is in the string one will be TRUE
+  ratio <- if(any(str_detect(string = paste(id), 
+                             pattern = ancestral_df$Geneid))){
+    index_id <- str_detect(string = paste(id), 
+                           pattern = ancestral_df$Geneid)
+    ancestral_df$percentile[index_id]*100
+  }else{
+    NA
+  }
+  return(list(ratio = ratio))
+}) %>% 
+  bind_rows
+ancestral_data <- as.data.frame(ancestral_data)
+
+rownames(ancestral_data) <- phylog$tip.label
+
+breaks <- seq(0, 100, by = 10)
+
+(tr <- ggtree(phylog, 
+            branch.length = 'none',
+            layout = 'circular') +
+  geom_tiplab2(aes(angle=angle, x = x + 2.5), 
+               cex = 3, 
+               color='black',
+               font = 3) +
+  ggplot2::xlim(0,20) 
+)
+```
+
+```{r heatmap_with_tree_figure6}
+
+p <- gheatmap(tr, 
+              ancestral_data, 
+              offset=.2, 
+              width=.15, 
+              colnames=FALSE) +
+  scale_fill_viridis_c(option='C', 
+                       name=substitute(
+                         atop(
+                           '',
+                           atop(
+                             '', 
+                             atop(
+                               atop(
+                                 paste(
+                                   "Percentile of ",
+                                   italic('ancestral pir')
+                                 ), 
+                                 " expression compared"
+                               ), 
+                               "to all genes"
+                             )
+                           )
+                         )
+                       ), 
+                       #Use substitute to ensure that the italics function is passed to the name argument
+                       #atop ensures that the first line is above the word 'expression'
+                       #Two atops used for every two lines 
+                       # as a hacky way to ensure that the lines are closer together
+                       na.value = 'white', 
+                       breaks = breaks) +
+  #Then alter theme as hacky way to make text size back to normal and increase margin so the empty line will fit
+  theme(legend.title = element_text(size = 15,
+                                    margin = margin(t = -2, 
+                                                    r = 0, 
+                                                    b = 0, 
+                                                    l = 0,
+                                                    unit = "mm")))
+
+p
+```
