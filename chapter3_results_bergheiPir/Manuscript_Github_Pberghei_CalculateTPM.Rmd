@@ -43,6 +43,7 @@ library('dendextend') # for dendrogram plotting
 library('plotly')
 library('ggpattern')
 library('ComplexHeatmap')
+library('ggdendro') #Drawing ggplot dendrograms
 
 #Colour blind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -248,7 +249,7 @@ E03_Ook_3 = c(409.621633449974,
 row.names = 3345:3350, 
 class = "data.frame")
 
-all.equal(berghei_tpm[3345:3350,23:28],check_tpm)
+all.equal(berghei_tpm[3345:3350,colnames(check_tpm)],check_tpm)
 
 ```
 
@@ -266,6 +267,8 @@ write.csv(berghei_tpm,
 berghei_tpm[,str_subset(colnames(berghei_tpm), 'E06_Liv.6h')] <- NULL
 ```
 
+# Hierarchical clustering plots.
+
 ```{r hclusts, message = FALSE}
 experiment_id <- unique(na.omit(str_extract(colnames(berghei_tpm), pattern = 'E[[:digit:]]{2}')))
 
@@ -275,11 +278,17 @@ lapply(experiment_id,
          if(ncol(tpm_data) > 3){
            dists = dist(t(tpm_data))
            par(cex=0.7)
-           plot(hclust(dists),
-                main = experiment_name)
+           p <- ggdendrogram(hclust(dists)) +
+             ggtitle(experiment_name)
+           ggsave(filename = paste0('thesis_chapter3_figure_hclust_', 
+                                    experiment_name, 
+                                    '.png'),
+                  plot = p,
+                  path = 'plots')
+           return(p)
          }
-       })
-
+       }
+)
 ```
 
 Going to combine certain samples based on their similar profiles, e.g. <4h, >48h liver stages.
