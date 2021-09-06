@@ -222,6 +222,27 @@ expt_tpms <- lapply(
 names(expt_tpms) <- expt_nams
 ```
 
+## Density plots
+
+```{r density_plots}
+# Compute the average bandwidth for all the samples so that we have the same value for each figure.
+list_bw = lapply(expt_tpms, function(expt){ 
+  lapply(colnames(expt$tpm)[-1], 
+         function(sample){
+           data = as.numeric(unlist(select(expt$tpm, 
+                                           paste(sample))))
+           dens = density(log1p(data))
+           dens$bw
+         })
+})
+bw_mean = mean(unlist(list_bw))
+bw_range = max(unlist(unlist(list_bw))) - min(unlist(unlist(list_bw)))
+print(paste('Bandwidth range = ', bw_range))
+
+source('../rfunctions/density_samples_fun.R')
+lapply(expt_tpms, density_samples, save = TRUE)
+```
+
 ```{r melt_df}
 berghei_tpm_melt <- berghei_tpm %>% 
     #Melt the data frame for using dplyr
@@ -238,7 +259,6 @@ berghei_tpm_avg_byexpt <- berghei_tpm_melt %>%
                    sd_tpm = sd(tpm)) %>% 
   mutate(expt_stage = paste0(experiment, '_', stage))
 ```
-
 
 ## The highest expressed _pir_ genes across the samples
 
@@ -307,7 +327,7 @@ all_top[[1]]
 
 ```
 
-##Supp figure 1A - Pearson correlation plot of collated samples.
+##Pearson correlation plot of collated samples.
 
 ```{r all_samples_collated_heatmap}
 
