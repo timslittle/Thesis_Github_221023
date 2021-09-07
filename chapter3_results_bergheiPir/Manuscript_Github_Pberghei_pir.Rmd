@@ -240,7 +240,9 @@ bw_range = max(unlist(unlist(list_bw))) - min(unlist(unlist(list_bw)))
 print(paste('Bandwidth range = ', bw_range))
 
 source('../rfunctions/density_samples_fun.R')
-lapply(expt_tpms, density_samples, save = TRUE)
+lapply(expt_tpms, 
+       density_samples, 
+       save = TRUE)
 ```
 
 ```{r melt_df}
@@ -358,8 +360,8 @@ corrplot(cor(big_top_recast), method = 'color',
 ## Supp figure 1B - PCA of all the samples.
 
 ```{r supp_figure_PCA_allgenes}
-
-big_tpm_pca <-  prcomp(berghei_tpm[,-1], 
+#Set the Geneids as the berghei_tpm rownames so that the PCA function retains them as loading variables
+big_tpm_pca <-  prcomp(column_to_rownames(berghei_tpm, var = 'Geneid'), 
                        center = TRUE, 
                        scale. = TRUE)
 
@@ -407,6 +409,24 @@ plot <- ggplot(big_tpm_pca_coords,
 
 plot
 
+```
+
+# Biplot of the PCA using all genes.
+
+```{r biplot}
+pca_object_loadings <- data.frame(Geneid = rownames(big_tpm_pca$x),
+                                    big_tpm_pca$x)
+pca_object_loadings$Geneid <- paste0(
+  pca_object_loadings$Geneid,
+  ' ',
+  allgene.info$Description[match(pca_object_loadings$Geneid,
+                                 allgene.info$Geneid)]
+)
+
+plot +
+  geom_point(data = pca_object_loadings,
+             aes(x = PC1*0.005, y = PC2*0.005),
+             inherit.aes = FALSE, size = 0.75)
 ```
 
 #Supp figure 1C - PCA using just the pir genes.
@@ -463,6 +483,7 @@ plot_pir <- ggplot(big_tpm_pir_pca_coords,
 
 plot_pir
 ```
+
 Combining the data across the experiments.
 
 ```{r combining_stages_data}
