@@ -423,7 +423,7 @@ pca_object_loadings <- data.frame(big_tpm_pca$x)
 rm(big_tpm_pca)
 
 #Calculate the highest loadings, only want these labels
-
+top_loadings <- 15
 pca_object_loadings$Geneid <- ''
 
 highest_loadings <- pca_object_loadings[rev(
@@ -435,35 +435,36 @@ highest_loadings <- pca_object_loadings[rev(
         1,
         sum)
     )
-  )[1:10],]
+)[1:top_loadings],]
 
-pca_object_loadings[rev(
-  order(
-    apply(
-      abs(
-        data.frame(pca_object_loadings$PC1, 
-                   pca_object_loadings$PC2)),
-      1,
-      sum)
-  )
-)[1:10],]$Geneid <- 
-  allgene.info$Description[match(rownames(highest_loadings),
-  allgene.info$Geneid)]
+highest_loadings$Geneid <- 
+  gsub(
+    gsub(allgene.info$Description[match(rownames(highest_loadings),
+                                      allgene.info$Geneid)], 
+       pattern = 'putative',
+       replacement = 'put.'),
+    pattern = 'early transcribed membrane protein',
+    replacement = 'ETRAMP')
 
 loadings_scale <- 0.005
 
-bp <- plot +
-  geom_point(data = pca_object_loadings,
+(bp <- plot +
+  geom_point(data = highest_loadings,
              aes(x = PC1*loadings_scale, y = PC2*loadings_scale),
              inherit.aes = FALSE, size = 0.75) +
-  geom_label_repel(data = pca_object_loadings,
+  geom_text_repel(data = highest_loadings,
              aes(x = PC1*loadings_scale, y = PC2*loadings_scale,
                  label = Geneid),
-             inherit.aes = FALSE, size = 3,
-            nudge_x = 0.4,
-            force = 100)
+             inherit.aes = FALSE, 
+             size = 3,
+             min.segment.length = 0,
+            force = 100
+            ) )
 
 ggsave('plots/thesis_chapter3_figure_biplot.png',
+       width = 7,
+       height = 5,
+       units = "in",
        bp)
 
 ```
