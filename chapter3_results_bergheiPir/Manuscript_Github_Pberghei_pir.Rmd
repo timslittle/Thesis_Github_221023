@@ -1120,7 +1120,7 @@ tpm_data_line <- bind_rows(list_tpms_line)
 
 tpm_data_line$stage <- factor(tpm_data_line$stage, 
                              levels = ordering(tpm_data_line$stage,
-                                               order_vector))
+                                               r_order_vector))
 
 #Calculate the range for the y value to make it look nicer
 if(max(
@@ -1263,6 +1263,12 @@ facet_wrap_custom <- function(..., scale_overrides = NULL) {
     annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf)
 )
 #Could also use functions from a package called 'lemon' to add the lines to the top two facets.
+
+ggsave('plots/thesis_chapter3_figure_gametocyteMarkers.png',
+       width = 7,
+       height = 5,
+       units = "in",
+       y)
 ```
 
 
@@ -1289,7 +1295,7 @@ g <- ggplot(gene_expression_df,
        aes(x = pir_gene,
            y = log2(1+med_tpm))) +
   xlab('Gene group')+
-  ylab('l0g(Median TPM + 1)')+
+  ylab('log(Median TPM + 1)')+
   # geom_violin()+
   geom_dotplot(binaxis = 'y',
                stackdir = 'center',

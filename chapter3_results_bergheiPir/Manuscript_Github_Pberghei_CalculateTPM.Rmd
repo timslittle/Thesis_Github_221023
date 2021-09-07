@@ -275,7 +275,8 @@ experiment_id <- unique(na.omit(str_extract(colnames(berghei_tpm), pattern = 'E[
 lapply(experiment_id, 
        function(experiment_name){
          tpm_data <- select(berghei_tpm, matches(experiment_name))
-         if(ncol(tpm_data) > 3){
+         if(ncol(tpm_data) > 4){ 
+           #No point doing hclusts for any of the expts with under four samples
            dists = dist(t(tpm_data))
            par(cex=0.7)
            p <- ggdendrogram(hclust(dists)) +
@@ -316,6 +317,8 @@ col_stage[grep(col_stage,
                                                                           perl = TRUE,
                                                                           invert = TRUE,
                                                                           pattern = '_[[:digit:]]{1,}$')]) 
+
+colnames(berghei_tpm) <- col_stage
 ```
 
 
