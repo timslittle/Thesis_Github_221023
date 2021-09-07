@@ -43,6 +43,7 @@ library('dendextend') # for dendrogram plotting
 library('plotly')
 library('ggpattern')
 library('ComplexHeatmap')
+library('ggrepel')
 
 #Colour blind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -342,14 +343,16 @@ big_top_recast <- column_to_rownames(big_top_recast, var = 'Geneid')
 
 # apply(big_top_recast, 2, sum)
 
-# pdf(file = 'Manuscript_suppfig1A_corrplot_all_experiments_rnaseq.pdf',
-#     height = 5,
-#     width = 5)
+png(file = 'plots/thesis_chapter3_figure_corrplot.png',
+    height = 5,
+    width = 5,
+    units = "in",
+    res = 330)
 corrplot(cor(big_top_recast), method = 'color', 
          order = 'hclust', hclust.method = 'ward.D2',
          cl.lim = c(-0.036,1), tl.cex = 0.50,
          col = c(viridis(100), magma(115)), addrect = 6)
-# dev.off()
+dev.off()
 
 corrplot(cor(big_top_recast), method = 'color', 
          order = 'hclust', hclust.method = 'ward.D2',
@@ -383,7 +386,8 @@ colornames <- setNames(rep_len(c(cbPalette, 'black', 'red'),
 
 pca_importance <- as.data.frame(summary(big_tpm_pca)$importance)
 
-plot <- ggplot(big_tpm_pca_coords,
+(
+  plot <- ggplot(big_tpm_pca_coords,
        aes(
          x = Dim.1,
          y = Dim.2,
@@ -405,16 +409,20 @@ plot <- ggplot(big_tpm_pca_coords,
   theme_classic() +
   theme(legend.key.size = unit(5, 'mm'),
         legend.text = element_text(size = 6))
+  )
 
 
-plot
+ggsave('plots/thesis_chapter3_figure_pca_allGenes.png',
+       width = 7,
+       height = 5,
+       units = "in",
+       plot)
 
 ```
 
 # Biplot of the PCA using all genes.
 
 ```{r biplot}
-library('ggrepel')
 set.seed(982)
 
 pca_object_loadings <- data.frame(big_tpm_pca$x)
@@ -466,7 +474,7 @@ ggsave('plots/thesis_chapter3_figure_biplot.png',
        height = 5,
        units = "in",
        bp)
-
+#Note that CSP is the 140 highest laodings gene.
 ```
 
 #Supp figure 1C - PCA using just the pir genes.
