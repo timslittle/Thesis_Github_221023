@@ -450,16 +450,22 @@ pca_object_loadings[rev(
   allgene.info$Description[match(rownames(highest_loadings),
   allgene.info$Geneid)]
 
-plot +
+loadings_scale <- 0.005
+
+bp <- plot +
   geom_point(data = pca_object_loadings,
-             aes(x = PC1*0.005, y = PC2*0.005),
+             aes(x = PC1*loadings_scale, y = PC2*loadings_scale),
              inherit.aes = FALSE, size = 0.75) +
   geom_label_repel(data = pca_object_loadings,
-             aes(x = PC1*0.005, y = PC2*0.005,
+             aes(x = PC1*loadings_scale, y = PC2*loadings_scale,
                  label = Geneid),
              inherit.aes = FALSE, size = 3,
             nudge_x = 0.4,
             force = 100)
+
+ggsave('thesis_chapter3_figure_biplot.png',
+       bp)
+
 ```
 
 #Supp figure 1C - PCA using just the pir genes.
