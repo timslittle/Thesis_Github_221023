@@ -463,7 +463,7 @@ bp <- plot +
             nudge_x = 0.4,
             force = 100)
 
-ggsave('thesis_chapter3_figure_biplot.png',
+ggsave('plots/thesis_chapter3_figure_biplot.png',
        bp)
 
 ```
