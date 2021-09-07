@@ -242,7 +242,7 @@ print(paste('Bandwidth range = ', bw_range))
 source('../rfunctions/density_samples_fun.R')
 lapply(expt_tpms, 
        density_samples, 
-       save = TRUE)
+       save = FALSE)
 ```
 
 ```{r melt_df}
@@ -342,14 +342,14 @@ big_top_recast <- column_to_rownames(big_top_recast, var = 'Geneid')
 
 # apply(big_top_recast, 2, sum)
 
-pdf(file = 'Manuscript_suppfig1A_corrplot_all_experiments_rnaseq.pdf',
-    height = 5,
-    width = 5)
+# pdf(file = 'Manuscript_suppfig1A_corrplot_all_experiments_rnaseq.pdf',
+#     height = 5,
+#     width = 5)
 corrplot(cor(big_top_recast), method = 'color', 
          order = 'hclust', hclust.method = 'ward.D2',
          cl.lim = c(-0.036,1), tl.cex = 0.50,
          col = c(viridis(100), magma(115)), addrect = 6)
-dev.off()
+# dev.off()
 
 corrplot(cor(big_top_recast), method = 'color', 
          order = 'hclust', hclust.method = 'ward.D2',
@@ -414,19 +414,52 @@ plot
 # Biplot of the PCA using all genes.
 
 ```{r biplot}
-pca_object_loadings <- data.frame(Geneid = rownames(big_tpm_pca$x),
-                                    big_tpm_pca$x)
-pca_object_loadings$Geneid <- paste0(
-  pca_object_loadings$Geneid,
-  ' ',
-  allgene.info$Description[match(pca_object_loadings$Geneid,
-                                 allgene.info$Geneid)]
-)
+library('ggrepel')
+set.seed(982)
+
+pca_object_loadings <- data.frame(big_tpm_pca$x)
+
+#Remove the large PCA object
+rm(big_tpm_pca)
+
+#Calculate the highest loadings, only want these labels
+
+pca_object_loadings$Geneid <- ''
+
+highest_loadings <- pca_object_loadings[rev(
+    order(
+      apply(
+        abs(
+          data.frame(pca_object_loadings$PC1, 
+                     pca_object_loadings$PC2)),
+        1,
+        sum)
+    )
+  )[1:10],]
+
+pca_object_loadings[rev(
+  order(
+    apply(
+      abs(
+        data.frame(pca_object_loadings$PC1, 
+                   pca_object_loadings$PC2)),
+      1,
+      sum)
+  )
+)[1:10],]$Geneid <- 
+  allgene.info$Description[match(rownames(highest_loadings),
+  allgene.info$Geneid)]
 
 plot +
   geom_point(data = pca_object_loadings,
              aes(x = PC1*0.005, y = PC2*0.005),
-             inherit.aes = FALSE, size = 0.75)
+             inherit.aes = FALSE, size = 0.75) +
+  geom_label_repel(data = pca_object_loadings,
+             aes(x = PC1*0.005, y = PC2*0.005,
+                 label = Geneid),
+             inherit.aes = FALSE, size = 3,
+            nudge_x = 0.4,
+            force = 100)
 ```
 
 #Supp figure 1C - PCA using just the pir genes.
