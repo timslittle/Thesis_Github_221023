@@ -225,7 +225,7 @@ names(expt_tpms) <- expt_nams
 
 ## Density plots
 
-```{r density_plots}
+```{r bandwidth}
 # Compute the average bandwidth for all the samples so that we have the same value for each figure.
 list_bw = lapply(expt_tpms, function(expt){ 
   lapply(colnames(expt$tpm)[-1], 
@@ -239,11 +239,13 @@ list_bw = lapply(expt_tpms, function(expt){
 bw_mean = mean(unlist(list_bw))
 bw_range = max(unlist(unlist(list_bw))) - min(unlist(unlist(list_bw)))
 print(paste('Bandwidth range = ', bw_range))
+```
 
+```{r density_plots}
 source('../rfunctions/density_samples_fun.R')
 lapply(expt_tpms, 
        density_samples, 
-       save = FALSE)
+       save = TRUE)
 ```
 
 ```{r melt_df}
