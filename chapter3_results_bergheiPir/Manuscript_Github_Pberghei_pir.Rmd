@@ -190,32 +190,6 @@ berghei_tpm <- read.csv('berghei_tpm.csv',
                         row.names = 1)
 ```
 
-```{r expt_tpms}
-#Get a list of df for each experiment.
-
-expt_nams <- unique(
-  na.omit(
-    str_extract(colnames(berghei_tpm), 
-                pattern = 'E[[:digit:]]{2}')
-  )
-)
-
-expt_tpms <- lapply(
-  expt_nams,
-  function(expt_nam){
-    expt_df <- select(
-      berghei_tpm,
-      matches(paste0('Geneid|', expt_nam))
-    ) %>% 
-      rename_with(~ str_remove(.x, 'E[[:digit:]]{2}_'),
-                  matches('E[[:digit:]]{2}'))
-    list(tpm = expt_df,
-         experiment = expt_nam)
-  }
-)
-names(expt_tpms) <- expt_nams
-```
-
 Combining the data across the experiments.
 
 ```{r combining_stages_data}
