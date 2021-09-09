@@ -34,9 +34,7 @@ library('corrplot')
 library('reshape2')
 library('circlize') # for circular plots
 library('plotly')
-library('ggpattern')
 library('ComplexHeatmap')
-library('ggrepel')
 
 #Colour blind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -358,11 +356,16 @@ stage_vec <- unique(
 
 stage_vec <- tpm_data_SorL_stackgenes$stage
 col_group <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'zzAsex' ,
-                   str_detect(stage_vec, pattern = 'Liv') ~ 'zzLiv',
-                   str_detect(stage_vec, pattern = 'Gam') ~ 'zzGam',
-                   str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'zzMos')
+                       str_detect(stage_vec, pattern = 'Liv') ~ 'zzLiv',
+                       str_detect(stage_vec, pattern = 'Gam') ~ 'zzGam',
+                       str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'zzMos')
 tpm_data_SorL_stackgenes$stage_col <- col_group
 fills <- c('#F6B9AD','#96d3ff','#f0d4e3','#a7e9af') #Note that this order is influenced by sort(col_group)
+```
+
+```{r draw_stacked_bar_chart}
+# Note that this code does not work with ggplot 3.3.5, but it does work with 3.3.3. 
+#  Some issue with the colours for the geom_rect background.
 
 y <- ggplot(data = tpm_data_SorL_stackgenes, 
             aes(
@@ -442,6 +445,10 @@ y <- ggplot(data = tpm_data_SorL_stackgenes,
       ),
       panel.spacing.x = unit(0, "null")
     ) 
+y
+```
+
+```{r change_facet_cols}
 
 g <- ggplot_gtable(ggplot_build(y))
 strip_t <- which(grepl('strip-t', g$layout$name))
