@@ -46,6 +46,8 @@ mutate <- dplyr::mutate
 summarise <- dplyr::summarise
 select <- dplyr::select
 
+global_save_var <- FALSE
+
 ```
 
 ```{r sourcing_functions}
@@ -468,6 +470,14 @@ for (i in strip_t) {
 
 grid.newpage()
 grid.draw(g)
+
+if(global_save_var){
+ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL.png',
+       width = 7,
+       height = 5,
+       units = "in",
+       g)
+}
 
 ```
 

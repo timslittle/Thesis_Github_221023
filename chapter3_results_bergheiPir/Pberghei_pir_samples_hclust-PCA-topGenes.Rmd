@@ -20,7 +20,6 @@ library('readr')
 library('dplyr')
 library('purrr')
 library('ggplot2')
-library('DESeq2')
 library("RColorBrewer")
 library('colorspace')
 library('data.table')
@@ -38,9 +37,6 @@ library('factoextra') # clustering algorithms & visualization
 library('ggfortify') # so ggplot understands prcomp objects
 library('ape') # for phylogeny plotting
 library('dendextend') # for dendrogram plotting
-library('plotly')
-library('ggpattern')
-library('ComplexHeatmap')
 library('ggrepel')
 
 #Colour blind friendly palette
