@@ -321,6 +321,7 @@ col_stage[grep(col_stage,
 colnames(berghei_tpm) <- col_stage
 ```
 
+Need to look more closely as to what I should and shouldn't remove from the hclust. E03_Asex.Schiz_3 looks like a well clustering sample, some of the 54 and 60h Liver samples do not look very similar to one another.
 
 ```{r remove_badly_clustering_samples}
 berghei_tpm$`E08_Liv.pre4h_1` <- NULL
