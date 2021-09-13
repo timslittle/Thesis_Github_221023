@@ -35,6 +35,7 @@ library('reshape2')
 library('circlize') # for circular plots
 library('plotly')
 library('ComplexHeatmap')
+library('kableExtra')
 
 #Colour blind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -310,143 +311,30 @@ melted_tpm <- filter(berghei_tpm,
 
 ```{r stacked_barchart}
 sd_bars <- TRUE
-g <- stacked_barchart(melted_tpm,
-                      stack_group_name = 'SorL',
-                      sd_bars = sd_bars)
+g_list <- stacked_barchart(melted_tpm,
+                           stack_group_name = 'SorL',
+                           sd_bars = sd_bars,
+                           inset = TRUE)
 
 if(global_save_var){
-ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL_standevError.png',
-       width = 7,
-       height = 5,
-       units = "in",
-       g)
+  ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL_standevError.png',
+         width = 7,
+         height = 5,
+         units = "in",
+         g_list$main)
+  ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL_standevError_inset.png',
+         width = 7,
+         height = 5,
+         units = "in",
+         g_list$inset)
 }
 
 ```
 
-# figure2binset
-
-```{r stack_bar_graph_SorL_lowexpression-figure2binset}
-#Include all stages expressed lower than a certain amount
-
-low_express <- tpm_data_SorL_stackgenes %>% 
-  group_by(stage) %>% 
-  summarise(sum_tpm = sum(mean_sum_tpm)) %>% 
-  filter(sum_tpm < 350)
-
-#Calculate the range for the y value to make it look nicer
-
-stacked_max <- max(low_express$sum_tpm)
-
-max_tpm <- c(
-  seq(
-    0,
-    mround(
-      stacked_max,
-      100),
-    length.out = 11)
-)
-
-tpm_data_SorL_stackgenes_low <- filter(tpm_data_SorL_stackgenes,
-                                       stage %in% low_express$stage)
-
-y <- ggplot(data = tpm_data_SorL_stackgenes_low, 
-              aes(
-                x = stage_num,
-                y = mean_sum_tpm, 
-                fill = SorL
-              )) +
-    geom_bar(position = position_stack(),
-             stat = 'identity',
-             colour = 'black',
-             size = 0.1) +
-    {if(sd_bars)list(
-      geom_errorbar(aes(ymax = sd_upper,
-                        ymin = sd_lower),
-                    position = position_dodge(width = .85),
-                    size = .25),
-        geom_point(aes(y = stacked_mean), 
-                   position = position_dodge(width = .85),
-                   show.legend = FALSE,
-                   size = .25)
-    )}+ 
-    scale_fill_manual(
-      breaks = unique(tpm_data_SorL_stackgenes$SorL),
-      values = c(
-        SorL_col_num,
-        fills
-      )
-    ) +
-    scale_color_manual('black') + 
-    scale_y_continuous(breaks = max_tpm) +
-    theme_classic() +
-    ylab(
-      bquote('total '~italic(.('pir'))~' TPM')
-    ) +
-    scale_x_continuous(
-      breaks = tpm_data_SorL_stackgenes$stage_num %>% unique(),
-      labels = tpm_data_SorL_stackgenes$stage %>% unique(),
-      expand = c(0, 0)
-    ) +
-    theme(
-      axis.text.x = element_text(angle = 90, 
-                                 vjust = .5,
-                                 size = 10),
-      axis.text.y = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      legend.title = element_text(size = 12),
-      legend.text = element_text(size = 10),
-      legend.key.size = unit(3,'mm'),
-      legend.key.width = unit(2,'mm'),
-    ) +
-    xlab('stage') + 
-    facet_grid(.~stage, 
-               scales = "free_x",
-               space = "free_x") +
-      scale_x_discrete(expand=expand_scale(add=1)) +
-    theme(
-      axis.title.x=element_blank(),
-      axis.text.x=element_blank(),
-      axis.ticks.x = element_blank(),
-      axis.text.y = element_text(size = 10),
-      axis.title.y = element_text(size = 10),
-      legend.title = element_text(size = 12),
-      legend.text = element_text(size = 10),
-      legend.key.size = unit(3,'mm'),
-      legend.key.width = unit(2,'mm'),
-      strip.text.x = element_text(size=8, 
-                                  face = 'bold', 
-                                  angle = 90),
-      strip.background = element_rect(
-        color="black", 
-        size=0.1, 
-        linetype="solid"
-      ),
-      panel.spacing.x = unit(0, "null")
-    ) 
-
-#This bit is to change the colour of the facet boxes
-
-g <- ggplot_gtable(ggplot_build(y))
-strip_t <- which(grepl('strip-t', g$layout$name))
-stage_vec <- unique(
-  levels(tpm_data_SorL_stackgenes_low$stage)[levels(tpm_data_SorL_stackgenes_low$stage) %in% as.character(tpm_data_SorL_stackgenes_low$stage)]
-)
-fills <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'coral1' ,
-                   str_detect(stage_vec, pattern = 'Liv') ~ 'plum2',
-                   str_detect(stage_vec, pattern = 'Gam') ~ 'lightskyblue1',
-                   str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'lightgreen')
-k <- 1
-for (i in strip_t) {
-  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
-  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
-  k <- k+1
-}
-grid.newpage()
-grid.draw(g)
-```
 
 ```{r table_of_SorL_highest_supptable}
+tpm_data_SorL_stackgenes <- g_list$data
+
 #For a neat table
 SorL_kable_index <- rep.int(2, 
                             times = length(unique(tpm_data_SorL_stackgenes$stage)))
@@ -458,14 +346,14 @@ tpm_data_SorL_stackgenes_top_table <- tpm_data_SorL_stackgenes %>%
                     pattern = 'ancestral', 
                     negate = TRUE)) %>% 
   group_by(stage) %>% 
-  mutate(sum_tpm = sum(total_tpm)) %>% 
+  mutate(sum_tpm = sum(mean_sum_tpm)) %>% 
   group_by(stage, 
            SorL) %>% 
-  slice_max(order_by = total_tpm,
+  slice_max(order_by = mean_sum_tpm,
             n = 1) %>% 
-  mutate(total_tpm = round(total_tpm, digits = 2),
-         prop_tpm = round(total_tpm/sum_tpm, digits = 2)) %>% 
-  select(stage, Geneid, SorL, total_tpm, prop_tpm)
+  mutate(mean_sum_tpm = round(mean_sum_tpm, digits = 2),
+         prop_tpm = round(mean_sum_tpm/sum_tpm, digits = 2)) %>% 
+  select(stage, Geneid, SorL, mean_sum_tpm, prop_tpm)
 
 tpm_data_SorL_stackgenes_top_table %>% 
   kable() %>% 

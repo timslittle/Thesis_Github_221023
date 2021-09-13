@@ -1,7 +1,8 @@
 stacked_barchart <- function(melted_tpm,
                              threshold = 1,
                              stack_group_name = 'Geneid',
-                             sd_bars = FALSE){
+                             sd_bars = FALSE,
+                             inset = TRUE){
   #Have to use sym and !! in order to get mutate to work 
   # (converting the stack_group_name to a symbol and then unquoting in the mutate function)
   stack_group_name <- rlang::sym(paste(stack_group_name))
@@ -107,7 +108,8 @@ stacked_barchart <- function(melted_tpm,
       values = c(
         SorL_col_num,
         fills
-      )
+      ),
+      name = 'Sub-family'
     ) +
     scale_color_manual('black') + 
     scale_y_continuous(breaks = max_tpm) +
@@ -173,5 +175,133 @@ stacked_barchart <- function(melted_tpm,
   
   grid.newpage()
   grid.draw(g)
-  return(g)
+  
+  #Draw inset of the smaller value samples
+  if(inset){
+    #Include all stages expressed lower than a certain amount
+    
+    low_express <- tpm_data_SorL_stackgenes %>% 
+      group_by(stage) %>% 
+      summarise(sum_tpm = sum(mean_sum_tpm),
+                max_stan_dev = max(sd_upper)) %>% 
+      filter(sum_tpm < 350)
+    
+    #Calculate the range for the y value to make it look nicer
+    
+    stacked_max <- max(low_express$max_stan_dev)
+    
+    max_tpm <- c(
+      seq(
+        0,
+        mround(
+          stacked_max,
+          100),
+        length.out = 11)
+    )
+    
+    tpm_data_SorL_stackgenes_low <- filter(tpm_data_SorL_stackgenes,
+                                           stage %in% low_express$stage)
+    
+    y <- ggplot(data = tpm_data_SorL_stackgenes_low, 
+                aes(
+                  x = stage_num,
+                  y = mean_sum_tpm, 
+                  fill = SorL
+                )) +
+      geom_bar(position = position_stack(),
+               stat = 'identity',
+               colour = 'black',
+               size = 0.1) +
+      {if(sd_bars)list(
+        geom_errorbar(aes(ymax = sd_upper,
+                          ymin = sd_lower),
+                      position = position_dodge(width = .85),
+                      size = .25),
+        geom_point(aes(y = stacked_mean), 
+                   position = position_dodge(width = .85),
+                   show.legend = FALSE,
+                   size = .25)
+      )}+ 
+      scale_fill_manual(
+        breaks = unique(tpm_data_SorL_stackgenes$SorL),
+        values = c(
+          SorL_col_num,
+          fills
+        )
+      ) +
+      scale_color_manual('black') + 
+      scale_y_continuous(breaks = max_tpm) +
+      theme_classic() +
+      ylab(
+        bquote('total '~italic(.('pir'))~' TPM')
+      ) +
+      scale_x_continuous(
+        breaks = tpm_data_SorL_stackgenes$stage_num %>% unique(),
+        labels = tpm_data_SorL_stackgenes$stage %>% unique(),
+        expand = c(0, 0)
+      ) +
+      theme(
+        axis.text.x = element_text(angle = 90, 
+                                   vjust = .5,
+                                   size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10),
+        legend.key.size = unit(3,'mm'),
+        legend.key.width = unit(2,'mm'),
+      ) +
+      xlab('stage') + 
+      facet_grid(.~stage, 
+                 scales = "free_x",
+                 space = "free_x") +
+      scale_x_discrete(expand=expand_scale(add=1)) +
+      theme(
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size = 10),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10),
+        legend.key.size = unit(3,'mm'),
+        legend.key.width = unit(2,'mm'),
+        strip.text.x = element_text(size=8, 
+                                    face = 'bold', 
+                                    angle = 90),
+        strip.background = element_rect(
+          color="black", 
+          size=0.1, 
+          linetype="solid"
+        ),
+        panel.spacing.x = unit(0, "null")
+      ) 
+    
+    #This bit is to change the colour of the facet boxes
+    
+    g_inset <- ggplot_gtable(ggplot_build(y))
+    strip_t <- which(grepl('strip-t', g_inset$layout$name))
+    stage_vec <- unique(
+      levels(tpm_data_SorL_stackgenes_low$stage)[levels(tpm_data_SorL_stackgenes_low$stage) %in% as.character(tpm_data_SorL_stackgenes_low$stage)]
+    )
+    fills <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'coral1' ,
+                       str_detect(stage_vec, pattern = 'Liv') ~ 'plum2',
+                       str_detect(stage_vec, pattern = 'Gam') ~ 'lightskyblue1',
+                       str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'lightgreen')
+    k <- 1
+    for (i in strip_t) {
+      j <- which(grepl('rect', g_inset$grobs[[i]]$grobs[[1]]$childrenOrder))
+      g_inset$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+      k <- k+1
+    }
+    grid.newpage()
+    grid.draw(g_inset)
+    return(list("main" = g,
+                "inset" = g_inset,
+                "data" = tpm_data_SorL_stackgenes))
+  } else {
+    return(list("main" = g,
+                "data" = tpm_data_SorL_stackgenes))
+  }
+  
 }
