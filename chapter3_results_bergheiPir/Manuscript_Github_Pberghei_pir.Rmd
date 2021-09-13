@@ -61,7 +61,9 @@ source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
 order_vector <- c('Sporo', 'Liv-pre4h', 'Liv-pre47h', 'Liv-post48h',
                  'Liv-2h','Liv-4h','Liv-12h', 'Liv-18h',
                  'Liv-24h' ,'Liv-36h','48h','54h','60h',
-                 'Mero','Asex','Schiz','Gam','-Pre3h','BldMl-24h','Ook')
+                 'Mero','Asex','Ring','Troph','Schiz',
+                 'Gam','Female','Male',
+                 '-Pre3h','BldMl-24h','Ook')
 
 r_order_vector <- str_replace_all(order_vector, 
                                   pattern = '-', 
@@ -197,7 +199,8 @@ combined_data <- berghei_tpm %>%
   melt(value.name = 'tpm') %>% 
   mutate(stage = str_extract(variable, 
                              pattern = '(?<=_).+(?=_)')) %>% 
-  group_by(Geneid, stage) %>% 
+  group_by(Geneid, 
+           stage) %>% 
   dplyr::summarise(tpm_mean = mean(tpm),
                    tpm_med = median(tpm),
                    tpm_sd = sd(tpm),
@@ -281,145 +284,162 @@ names(clade_col_num) <- sapply(names(clade_col),
 # pir expression, S or L-form, stacked bar chart, stack for each gene
 
 ```{r SorL_stacked_eachGene_fig2a}
-  tpm_data <- combined_data %>% 
-    rownames_to_column(var = 'Geneid') %>% 
-    filter(Geneid %in% pir_id) %>% 
-    melt(id.vars = 'Geneid', 
-         variable.name = 'stage', 
-         value.name = 'tpm') %>% 
+melted_tpm <- filter(berghei_tpm, 
+                     Geneid %in% pir_id) %>% 
   mutate(clade = pir_clade$clade[match(Geneid, 
                                        pir_clade$Geneid)]
-         ) %>% 
+  ) %>% 
+  mutate(SorL = str_extract(clade, 
+                            pattern = '((L|S)(?=[[:digit:]]))|ancestral')) %>% 
+  melt(id.vars = c('Geneid','clade', 'SorL'), 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
   group_by(clade) %>% 
   mutate(clade = paste0(clade, ' (n = ', n_distinct(Geneid) ,')')) %>% 
-    mutate(stack_group = Geneid) %>% 
-    mutate(tpm = ifelse(tpm > 1, tpm, 0)) %>% #Filtering step for low value pir genes.
-    group_by(stage, 
-             stack_group,
-             clade) %>% 
-    dplyr::summarise(total_tpm = sum(tpm)) %>%
-  arrange(
-          desc(clade),
-          total_tpm
-)
+  group_by(SorL) %>% 
+  mutate(
+    SorL = paste0(SorL, 
+                  ' (n = ', 
+                  n_distinct(Geneid),
+                  ')'),
+    stage = str_extract(sample, 
+                        pattern = '(?<=_).+(?=_)')) 
+
+```
+
+```{r stacked_barchart_fun}
+stacked_barchart <- function(melted_tpm,
+                             threshold = 1,
+                             stack_group_name = 'Geneid',
+                             sd_bars = FALSE){
+  #Have to use sym and !! in order to get mutate to work 
+  # (converting the stack_group_name to a symbol and then unquoting in the mutate function)
+  stack_group_name <- rlang::sym(paste(stack_group_name))
   
-tpm_data <- mutate(tpm_data,
-                   order = row_number())
-
-tpm_data_SorL_stackgenes <- mutate(tpm_data,
-                        SorL = str_extract(clade, 
-                                           pattern = '(L|S(?=[[:digit:]]))|ancestral|pan-rodent'))
-tpm_data_SorL_stackgenes <- group_by(tpm_data_SorL_stackgenes,
-                                     stage, 
-                                     SorL,
-                                     stack_group) %>% 
-  dplyr::summarise(total_tpm = sum(total_tpm)) %>% 
-  #Include the number of genes in each fill category for the labels
-  mutate(SorL = paste0(SorL, 
-                       ' (n = ', 
-                       n_distinct(stack_group),
-                       ')')) %>% 
-#Order by SorL and then by total_tpm, then convert stack_group to a factor so ggplot orders correctly
-  arrange(SorL, 
-          total_tpm) %>% 
-  mutate(stage_num = as.integer(stage))
-tpm_data_SorL_stackgenes$stage %>% as.integer %>% unique
-tpm_data_SorL_stackgenes$stage %>% unique
-
-tpm_data_SorL_stackgenes$stack_group_order <- seq_len(length.out = nrow(tpm_data_SorL_stackgenes))
-```
-
-```{r stacked_bar_chart_figure2b}
-#Calculate the range for the y value to make it look nicer
-stacked_max <- tpm_data %>% 
-  ungroup %>% 
-  group_by(stage) %>% 
-  dplyr::summarise(max_tpm = sum(total_tpm)) %>% 
-  .$max_tpm %>% 
-  max
-
-max_tpm <- c(
-  seq(
-    0,
-    mround(
-      stacked_max,
-      500),
-    length.out = 11)
-)
-
-stack_label <- 'sub-family'
-
-write_csv(x = tpm_data_SorL_stackgenes,
-          path = 'tl20-05_SorL-subfamily_pir.csv')
-
-stage_vec <- unique(
-  levels(tpm_data$stage)
-)
-
-stage_vec <- tpm_data_SorL_stackgenes$stage
-col_group <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'zzAsex' ,
-                       str_detect(stage_vec, pattern = 'Liv') ~ 'zzLiv',
-                       str_detect(stage_vec, pattern = 'Gam') ~ 'zzGam',
-                       str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'zzMos')
-tpm_data_SorL_stackgenes$stage_col <- col_group
-fills <- c('#F6B9AD','#96d3ff','#f0d4e3','#a7e9af') #Note that this order is influenced by sort(col_group)
-```
-
-```{r draw_stacked_bar_chart}
-# Note that this code does not work with ggplot 3.3.5, but it does work with 3.3.3. 
-#  Some issue with the colours for the geom_rect background.
-
-y <- ggplot(data = tpm_data_SorL_stackgenes, 
-            aes(
-              x = stage_num,
-              y = total_tpm, 
-              fill = SorL,
-              # group = stage_num
-            )) +
-  geom_rect(
-    aes(
-      xmin = stage_num - .7,
-      xmax = stage_num + .7,
-      ymin = -Inf,
-      ymax = Inf,
-      fill = stage_col
-    ),
-    alpha = .05
-  ) +
-  geom_bar(position = position_stack(),
-           stat = 'identity',
-           colour = 'black',
-           size = 0.1) + 
-  scale_fill_manual(
-    breaks = unique(tpm_data_SorL_stackgenes$SorL),
-    values = c(
-      SorL_col_num,
-      fills
-    )
-  ) +
-  scale_color_manual('black') + 
-  # labs(fill = stack_label) +
-  scale_y_continuous(breaks = max_tpm) +
-  theme_classic() +
-  # scale_size(range = c(0,3)) +
-  ylab(
-    bquote('total '~italic(.('pir'))~' TPM')
-  ) +
-  scale_x_continuous(
-    breaks = tpm_data_SorL_stackgenes$stage_num %>% unique(),
-    labels = tpm_data_SorL_stackgenes$stage %>% unique(),
-    expand = c(0, 0)
-  ) +
+  tpm_data <- mutate(melted_tpm, 
+                     stack_group = (!!stack_group_name)) %>% 
+    mutate(tpm = ifelse(tpm > threshold, tpm, 0)) %>% #Filtering step for low value pir genes.
+    group_by(stage, SorL, stack_group, sample) %>% 
+    summarise(sum_tpm = sum(tpm)) %>% 
+    group_by(SorL, stack_group, stage) %>%
+    summarise(mean_sum_tpm = mean(sum_tpm),
+              sd_sum_tpm = sd(sum_tpm)) %>% 
+    arrange(desc(SorL),
+            mean_sum_tpm) %>% 
+    ungroup() %>% 
+    mutate(order = row_number())
+  
+  tpm_data_SorL_stackgenes <- 
+    #Order by SorL and then by mean_sum_tpm, then convert stack_group to a factor so ggplot orders correctly
+    arrange(tpm_data,
+            stage,
+            desc(SorL), 
+            mean_sum_tpm) %>% 
+    mutate(stage = factor(stage,
+                          levels = ordering(unique(tpm_data$stage),
+                                            order_vector = r_order_vector)),
+           stage_num = as.integer(
+             factor(stage,
+                    levels = ordering(unique(tpm_data$stage),
+                                      order_vector = r_order_vector))
+           )) %>% 
+    group_by(stage) %>% 
+    mutate(stacked_mean = cumsum(mean_sum_tpm),
+           sd_upper = cumsum(mean_sum_tpm) + cumsum(sd_sum_tpm),
+           sd_lower = ifelse(cumsum(mean_sum_tpm) - cumsum(sd_sum_tpm) < 0,
+                             0, 
+                             cumsum(mean_sum_tpm) - cumsum(sd_sum_tpm)))
+  
+  tpm_data_SorL_stackgenes$stack_group_order <- seq_len(length.out = nrow(tpm_data_SorL_stackgenes))
+  
+  stacked_max <- tpm_data %>% 
+    ungroup %>% 
+    group_by(stage) %>% 
+    dplyr::summarise(max_tpm = sum(mean_sum_tpm)) %>% 
+    .$max_tpm %>% 
+    max
+  
+  max_tpm <- c(
+    seq(
+      0,
+      mround(
+        stacked_max,
+        500),
+      length.out = 11)
+  )
+  
+  stack_label <- 'sub-family'
+  
+  stage_vec <- tpm_data_SorL_stackgenes$stage
+  col_group <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'zzAsex' ,
+                         str_detect(stage_vec, pattern = 'Liv') ~ 'zzLiv',
+                         str_detect(stage_vec, pattern = 'Gam') ~ 'zzGam',
+                         str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'zzMos')
+  tpm_data_SorL_stackgenes$stage_col <- col_group
+  fills <- c('#F6B9AD','#96d3ff','#f0d4e3','#a7e9af') 
+  #Note that this order is influenced by sort(col_group)
+  
+  # Note that this code does not work with ggplot 3.3.5, but it does work with 3.3.3. 
+  #  Some issue with the colours for the geom_rect background.
+  
+  y <- ggplot(data = tpm_data_SorL_stackgenes, 
+              aes(
+                x = stage_num,
+                y = mean_sum_tpm, 
+                fill = SorL
+              )) +
+    geom_rect(
+      aes(
+        xmin = stage_num - .7,
+        xmax = stage_num + .7,
+        ymin = -Inf,
+        ymax = Inf,
+        fill = stage_col
+      ),
+      alpha = .5
+    ) +
+    geom_bar(position = position_stack(),
+             stat = 'identity',
+             colour = 'black',
+             size = 0.1) +
+    {if(sd_bars)list(
+      geom_errorbar(aes(ymax = sd_upper,
+                        ymin = sd_lower),
+                    position = position_dodge(width = .85),
+                    size = .25),
+        geom_point(aes(y = stacked_mean), 
+                   position = position_dodge(width = .85),
+                   show.legend = FALSE,
+                   size = .25)
+    )}+ 
+    scale_fill_manual(
+      breaks = unique(tpm_data_SorL_stackgenes$SorL),
+      values = c(
+        SorL_col_num,
+        fills
+      )
+    ) +
+    scale_color_manual('black') + 
+    scale_y_continuous(breaks = max_tpm) +
+    theme_classic() +
+    ylab(
+      bquote('total '~italic(.('pir'))~' TPM')
+    ) +
+    scale_x_continuous(
+      breaks = tpm_data_SorL_stackgenes$stage_num %>% unique(),
+      labels = tpm_data_SorL_stackgenes$stage %>% unique(),
+      expand = c(0, 0)
+    ) +
     theme(
       axis.text.x = element_text(angle = 90, 
                                  vjust = .5,
                                  size = 10),
       axis.text.y = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    legend.title = element_text(size = 12),
-    legend.text = element_text(size = 10),
-    legend.key.size = unit(3,'mm'),
-    legend.key.width = unit(2,'mm'),
+      axis.title.y = element_text(size = 10),
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
     ) +
     xlab('stage') + 
     facet_grid(.~stage, 
@@ -430,7 +450,6 @@ y <- ggplot(data = tpm_data_SorL_stackgenes,
       axis.title.x=element_blank(),
       axis.text.x=element_blank(),
       axis.ticks.x = element_blank(),
-      # axis.line.x = element_blank(),
       axis.text.y = element_text(size = 10),
       axis.title.y = element_text(size = 10),
       legend.title = element_text(size = 12),
@@ -447,32 +466,35 @@ y <- ggplot(data = tpm_data_SorL_stackgenes,
       ),
       panel.spacing.x = unit(0, "null")
     ) 
-y
+  
+  g <- ggplot_gtable(ggplot_build(y))
+  strip_t <- which(grepl('strip-t', g$layout$name))
+  stage_vec_strip <- sort(unique(tpm_data_SorL_stackgenes$stage))
+  fills <- case_when(str_detect(stage_vec_strip, pattern = 'Asex') ~ 'coral1' ,
+                     str_detect(stage_vec_strip, pattern = 'Liv') ~ 'plum2',
+                     str_detect(stage_vec_strip, pattern = 'Gam') ~ 'lightskyblue1',
+                     str_detect(stage_vec_strip, pattern  = 'Bld|Sporo|Ook') ~ 'lightgreen')
+  k <- 1
+  for (i in strip_t) {
+    j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+    k <- k+1
+  }
+  
+  grid.newpage()
+  grid.draw(g)
+  return(g)
+}
 ```
 
-```{r change_facet_cols}
-
-g <- ggplot_gtable(ggplot_build(y))
-strip_t <- which(grepl('strip-t', g$layout$name))
-stage_vec <- unique(
-  levels(tpm_data$stage)
-)
-fills <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'coral1' ,
-                   str_detect(stage_vec, pattern = 'Liv') ~ 'plum2',
-                   str_detect(stage_vec, pattern = 'Gam') ~ 'lightskyblue1',
-                   str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'lightgreen')
-k <- 1
-for (i in strip_t) {
-  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
-  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
-  k <- k+1
-}
-
-grid.newpage()
-grid.draw(g)
+```{r stacked_barchart}
+sd_bars <- TRUE
+g <- stacked_barchart(melted_tpm,
+                      stack_group_name = 'SorL',
+                      sd_bars = sd_bars)
 
 if(global_save_var){
-ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL.png',
+ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL_standevError.png',
        width = 7,
        height = 5,
        units = "in",
@@ -488,7 +510,7 @@ ggsave('plots/thesis_chapter3_figure_stackedBarChartTPM_SorL.png',
 
 low_express <- tpm_data_SorL_stackgenes %>% 
   group_by(stage) %>% 
-  summarise(sum_tpm = sum(total_tpm)) %>% 
+  summarise(sum_tpm = sum(mean_sum_tpm)) %>% 
   filter(sum_tpm < 350)
 
 #Calculate the range for the y value to make it look nicer
@@ -508,56 +530,79 @@ tpm_data_SorL_stackgenes_low <- filter(tpm_data_SorL_stackgenes,
                                        stage %in% low_express$stage)
 
 y <- ggplot(data = tpm_data_SorL_stackgenes_low, 
-            aes(
-              x = stage,
-              y = total_tpm, 
-              fill = SorL,
-              # group = stage_num
-            )) +
-  geom_bar(position = position_stack(),
-           stat = 'identity',
-           colour = 'black',
-           size = 0.1) + 
-  scale_fill_manual(
-    breaks = unique(tpm_data_SorL_stackgenes$SorL),
-    values = c(
-      SorL_col_num,
-      fills
-    )
-  ) +
-  scale_color_manual('black') + 
-  labs(fill = stack_label) +
-  scale_y_continuous(breaks = max_tpm) +
-  theme_classic() +
-  scale_size(range = c(0,3)) +
-  ylab(
-    bquote('total '~italic(.('pir'))~' TPM')
-  ) + 
-  facet_grid(.~stage, 
-             scales = "free_x",
-             space = "free_x") +
-  scale_x_discrete(expand=expand_scale(add=1)) +
-  theme(
-    axis.title.x=element_blank(),
-    axis.text.x=element_blank(),
-    axis.ticks.x = element_blank(),
-    # axis.line.x = element_blank(),
-    axis.text.y = element_text(size = 15),
-    axis.title.y = element_text(size = 8),
-    legend.title = element_text(size = 7),
-    legend.text = element_text(size = 5),
-    legend.key.size = unit(3,'mm'),
-    legend.key.width = unit(2,'mm'),
-    strip.text.x = element_text(size=6, 
-                                face = 'bold', 
-                                angle = 90),
-    strip.background = element_rect(
-      color="black", 
-      size=0.1, 
-      linetype="solid"
-    ),
-    panel.spacing.x = unit(0, "null")
-  ) 
+              aes(
+                x = stage_num,
+                y = mean_sum_tpm, 
+                fill = SorL
+              )) +
+    geom_bar(position = position_stack(),
+             stat = 'identity',
+             colour = 'black',
+             size = 0.1) +
+    {if(sd_bars)list(
+      geom_errorbar(aes(ymax = sd_upper,
+                        ymin = sd_lower),
+                    position = position_dodge(width = .85),
+                    size = .25),
+        geom_point(aes(y = stacked_mean), 
+                   position = position_dodge(width = .85),
+                   show.legend = FALSE,
+                   size = .25)
+    )}+ 
+    scale_fill_manual(
+      breaks = unique(tpm_data_SorL_stackgenes$SorL),
+      values = c(
+        SorL_col_num,
+        fills
+      )
+    ) +
+    scale_color_manual('black') + 
+    scale_y_continuous(breaks = max_tpm) +
+    theme_classic() +
+    ylab(
+      bquote('total '~italic(.('pir'))~' TPM')
+    ) +
+    scale_x_continuous(
+      breaks = tpm_data_SorL_stackgenes$stage_num %>% unique(),
+      labels = tpm_data_SorL_stackgenes$stage %>% unique(),
+      expand = c(0, 0)
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 90, 
+                                 vjust = .5,
+                                 size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
+    ) +
+    xlab('stage') + 
+    facet_grid(.~stage, 
+               scales = "free_x",
+               space = "free_x") +
+      scale_x_discrete(expand=expand_scale(add=1)) +
+    theme(
+      axis.title.x=element_blank(),
+      axis.text.x=element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 10),
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
+      strip.text.x = element_text(size=8, 
+                                  face = 'bold', 
+                                  angle = 90),
+      strip.background = element_rect(
+        color="black", 
+        size=0.1, 
+        linetype="solid"
+      ),
+      panel.spacing.x = unit(0, "null")
+    ) 
 
 #This bit is to change the colour of the facet boxes
 
