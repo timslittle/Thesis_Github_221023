@@ -47,8 +47,8 @@ library('writexl')
 Download the data, and remove heterogeneous life cycle stages like 'Gam' and 'BldMl'. Will keep Asex.Mixed since we want to be able to compare that to other stages, although for each Asex stage we should remove the individual stages (like Rings) when looking at mixed, and the Mixed stages when looking at the individual stages.
 
 
-```{r read_count_data}
-berg_tpm <- read.csv('berghei_counts_newNames.csv',
+```{r read_tpm_data}
+berg_tpm <- read.csv('berghei_tpm.csv',
                      row.names = 1)
 
 #Filter low expressed genes (greater than 10 tpm in at least one sample), convert to a matrix, add 1 for the log transformation, then transform to log2
@@ -65,7 +65,6 @@ berg_tpm_log2plus1.mat <- berg_tpm %>%
   log(base = 2)
 
 berg_tpm_log2plus1.mat[1:5,1:5]
-
 
 ```
 
@@ -84,9 +83,6 @@ unique(lifeCycle_labels) %>% sort
 ```
 
 ```{r generate_genesets}
-pir_info <- read_xlsx('Manuscript_Frontiers_SuppInfo_berghei.xlsx',
-                      sheet = 1)
-
 pir_info <- read.table('../standard_files/Pberghei_pir_clades.txt',
                     header = TRUE)
 
@@ -126,9 +122,10 @@ maleVfemale <- lapply(
   }
 )
 
+lapply(maleVfemale, getElement, 'qstable')
 ```
 
-```{r lateliverstages}
+```{r post48livvearlyliv}
 
 post48livvearlyliv <- lapply(
   list(pir_geneset,
@@ -149,7 +146,7 @@ post48livvearlyliv <- lapply(
 lapply(post48livvearlyliv, function(x) `$`(x,qstable))
 ```
 
-```{r}
+```{r livmero_livpost48}
 livmero_livpost48.results <- lapply(
   list(pir_geneset,
        ShortLong_list,
@@ -169,7 +166,7 @@ livmero_livpost48.results <- lapply(
 lapply(livmero_livpost48.results, function(x) `$`(x,qstable))
 ```
 
-```{r}
+```{r asexRing_asexMix}
 asexRing_asexMix.results <- lapply(
   list(pir_geneset,
        subfam_list,
@@ -353,13 +350,14 @@ Heatmap(mero_asex_malegam_stats_df_cast,
           fdr_val <- mero_asex_malegam_stats_df[
             mero_asex_malegam_stats_df$contrast == rownames(mero_asex_malegam_stats_df_cast[i,]),
           ]$FDR[j]
-          if(fdr_val<= 0.05){
+          if(fdr_val<= 0.1){
             grid.text(
               sprintf("%.3f", #One significant figure
                       fdr_val),
               x,
               y,
-              gp = gpar(fontsize = 10)
+              gp = gpar(fontsize = 10,
+                        fontface = 'bold')
             )
           }
         })
