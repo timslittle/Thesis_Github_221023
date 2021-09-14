@@ -375,7 +375,7 @@ tpm_data_subfam <- combined_data %>%
   mutate(clade = pir_clade$clade[match(Geneid, 
                                        pir_clade$Geneid)],
          SorL = pir_clade$SorL[match(Geneid, 
-                                       pir_clade$Geneid)]
+                                     pir_clade$Geneid)]
   ) %>% 
   group_by(SorL, clade) %>% 
   mutate(clade = paste0(clade, ' (n = ', n_distinct(Geneid) ,')')) %>% 
@@ -476,27 +476,33 @@ y <- ggplot(data = tpm_data_subfam,
     panel.spacing.x = unit(0, "null")
   ) 
 
-  #This bit is to change the colour of the facet boxes
+#This bit is to change the colour of the facet boxes
+
+g <- ggplot_gtable(ggplot_build(y))
+strip_t <- which(grepl('strip-t', g$layout$name))
+stage_vec <- unique(
   
-  g <- ggplot_gtable(ggplot_build(y))
-  strip_t <- which(grepl('strip-t', g$layout$name))
-  stage_vec <- unique(
-    
-    levels(tpm_data_subfam$stage)
-  )
-  fills <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'coral1' ,
-                     str_detect(stage_vec, pattern = 'Liv') ~ 'plum2',
-                     str_detect(stage_vec, pattern = 'Gam') ~ 'lightskyblue1',
-                     str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'lightgreen')
-  k <- 1
-  for (i in strip_t) {
-    j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
-    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
-    k <- k+1
-  }
-  
-  grid.newpage()
-  grid.draw(g)
+  levels(tpm_data_subfam$stage)
+)
+fills <- case_when(str_detect(stage_vec, pattern = 'Asex') ~ 'coral1' ,
+                   str_detect(stage_vec, pattern = 'Liv') ~ 'plum2',
+                   str_detect(stage_vec, pattern = 'Gam') ~ 'lightskyblue1',
+                   str_detect(stage_vec, pattern  = 'Bld|Sporo|Ook') ~ 'lightgreen')
+k <- 1
+for (i in strip_t) {
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+  k <- k+1
+}
+
+grid.newpage()
+grid.draw(g)
+
+ggsave('plots/thesis_chapter3_figure_propBarChart_subFam.png',
+       width = 7,
+       height = 5,
+       units = "in",
+       g)
 ```
 
 ## Gametocyte marker gene expression - supp figure 2

@@ -335,3 +335,42 @@ berghei_tpm$`E03_Asex.Schiz_3` <- NULL
 write.csv(berghei_tpm,
           'berghei_tpm.csv')
 ```
+
+## Saving the counts with new names/samples removed
+
+```{r save_new_counts}
+berghei_counts[,str_subset(colnames(berghei_counts), 'E06_Liv.6h')] <- NULL
+
+col_stage <- colnames(berghei_counts)
+
+#Combine all Liver samples 4h or before into LiverPre4h
+col_stage <- str_replace_all(col_stage,
+                             pattern = 'Liv\\.(2|4)h_[[:digit:]]+',
+                             replacement = 'Liv.pre4h')
+#Combine all Liver samples 48h or onwards into LiverPost48h
+col_stage <- str_replace_all(col_stage,
+                             pattern = 'Liv\\.(4[8-9]|[5-9][0-9])h_[[:digit:]]+',
+                             replacement = 'Liv.post48h')
+#Combine all blood meal samples 3h or before into BldMlPre3h
+col_stage <- str_replace_all(col_stage,
+                             pattern = '(1h|3h)_[[:digit:]]+', 
+                             replacement = 'Pre3h')
+#Uniquify the name names
+col_stage[grep(col_stage, 
+               perl = TRUE,
+               invert = TRUE,
+               pattern = '_[[:digit:]]{1,}$')] <- uniquify(col_stage[grep(col_stage, 
+                                                                          perl = TRUE,
+                                                                          invert = TRUE,
+                                                                          pattern = '_[[:digit:]]{1,}$')]) 
+
+colnames(berghei_counts) <- col_stage
+
+berghei_counts$`E08_Liv.pre4h_1` <- NULL
+berghei_counts$`E03_Asex.Schiz_1` <- NULL
+berghei_counts$`E03_Asex.Schiz_3` <- NULL
+
+write.csv(berghei_counts,
+          'berghei_counts_newNames.csv')
+```
+
