@@ -366,69 +366,75 @@ tpm_data_SorL_stackgenes_top_table %>%
 
 ```{r combined_tpm_stacked_df}
 
-  tpm_data_subfam <- combined_data %>% 
-    rownames_to_column(var = 'Geneid') %>% 
-    filter(Geneid %in% pir_id) %>% 
-    melt(id.vars = 'Geneid', 
-         variable.name = 'stage', 
-         value.name = 'tpm') %>% 
+tpm_data_subfam <- combined_data %>% 
+  rownames_to_column(var = 'Geneid') %>% 
+  filter(Geneid %in% pir_id) %>% 
+  melt(id.vars = 'Geneid', 
+       variable.name = 'stage', 
+       value.name = 'tpm') %>% 
   mutate(clade = pir_clade$clade[match(Geneid, 
+                                       pir_clade$Geneid)],
+         SorL = pir_clade$SorL[match(Geneid, 
                                        pir_clade$Geneid)]
-         ) %>% 
-  group_by(clade) %>% 
+  ) %>% 
+  group_by(SorL, clade) %>% 
   mutate(clade = paste0(clade, ' (n = ', n_distinct(Geneid) ,')')) %>% 
-    mutate(stack_group = clade) %>% 
-    group_by(stage, 
-             stack_group,
-             clade) %>% 
-    dplyr::summarise(total_tpm = sum(tpm)) %>%
+  group_by(stage,
+           SorL,
+           clade) %>% 
+  dplyr::summarise(total_tpm = sum(tpm)) %>%
+  group_by(stage) %>% 
+  mutate(prop_tpm = total_tpm/sum(total_tpm)) %>% 
   arrange(
-          desc(clade),
-          total_tpm
-)
-  
-
-  
-tpm_data_subfam <- mutate(tpm_data_subfam,
-                   order = row_number())
-
-  # #Apply ordering
-  # tpm_data_subfam$stage = factor(tpm_data_subfam$stage, 
-  #                         levels = ordering(tpm_data_subfam$stage,
-  #                                           order_vector))
-  
-  #Calculate the range for the y value to make it look nicer
-  stacked_max <- tpm_data_subfam %>% 
-    ungroup %>% 
-    group_by(stage) %>% 
-    dplyr::summarise(max_tpm = sum(total_tpm)) %>% 
-    .$max_tpm %>% 
-    max
-  
-  max_tpm <- c(
-    seq(
-      0,
-      mround(
-        stacked_max,
-        500),
-      length.out = 11)
+    desc(clade),
+    total_tpm
   )
-```
 
-```{r combined_tpm_stacked_plot}
 
-  stack_label <- 'sub-family'
+clade_composition <- pir_clade %>% 
+  group_by(SorL, clade) %>% 
+  mutate(clade = paste0(clade, ' (n = ', n_distinct(Geneid) ,')')) %>% 
+  summarise(prop_tpm = n_distinct(Geneid)/nrow(.)) %>% 
+  mutate(stage = "Genome") %>% 
+  melt(id.vars = c('stage', 'SorL', 'clade'), 
+       value.name = 'prop_tpm') %>% 
+  select(-variable)
+
+tpm_data_subfam <- bind_rows(tpm_data_subfam, clade_composition) %>% 
+  mutate(stage = factor(stage, 
+                        levels = ordering(unique(c(as.character(tpm_data_subfam$stage), 
+                                                   clade_composition$stage)), 
+                                          order_vector = c(r_order_vector, 
+                                                           'composition'))))
+
+#Calculate the range for the y value to make it look nicer
+stacked_max <- tpm_data_subfam %>% 
+  ungroup %>% 
+  group_by(stage) %>% 
+  dplyr::summarise(max_tpm = sum(prop_tpm)) %>% 
+  .$max_tpm %>% 
+  max
+
+max_tpm <- c(
+  seq(
+    0,
+    mround(
+      stacked_max,
+      500),
+    length.out = 11)
+)
+
+stack_label <- 'sub-family'
 
 y <- ggplot(data = tpm_data_subfam, 
             aes(
               x = stage,
-              y = total_tpm, 
-              fill = clade,
-              group = order
+              y = prop_tpm, 
+              fill = clade
             )) +
   geom_bar(
-    # position = position_stack(),
-    position = 'fill',
+    position = position_stack(),
+    # position = 'fill',
     stat = 'identity',
     colour = 'black',
     size = 0.1) +
@@ -437,13 +443,14 @@ y <- ggplot(data = tpm_data_subfam,
   ) +
   scale_color_manual('black') + 
   labs(fill = stack_label) +
-  scale_y_continuous(breaks = seq(0,1,0.1)) +
+  scale_y_continuous(breaks = seq(0,1,0.2)) +
   theme_classic() +
   scale_size(range = c(0,3)) +
   ylab(
     bquote('Proportion of '~italic(.('pir'))~' TPM')
   ) + 
-  facet_grid(.~stage, 
+  facet_grid(cols = vars(stage),
+             rows = vars(SorL),
              scales = "free_x",
              space = "free_x") +
   scale_x_discrete(expand=expand_scale(add=1)) +
