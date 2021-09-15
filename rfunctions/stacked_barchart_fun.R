@@ -35,11 +35,12 @@ stacked_barchart <- function(melted_tpm,
                                       order_vector = r_order_vector))
            )) %>% 
     group_by(stage) %>% 
-    mutate(stacked_mean = cumsum(mean_sum_tpm),
-           sd_upper = cumsum(mean_sum_tpm) + cumsum(sd_sum_tpm),
-           sd_lower = ifelse(cumsum(mean_sum_tpm) - cumsum(sd_sum_tpm) < 0,
-                             0, 
-                             cumsum(mean_sum_tpm) - cumsum(sd_sum_tpm)))
+    mutate(stacked_mean = cumsum(mean_sum_tpm)) %>% 
+    mutate(sd_upper = stacked_mean + sd_sum_tpm,
+           sd_lower = ifelse(sd_sum_tpm > mean_sum_tpm,
+                             lag(stacked_mean, default = 0), 
+                             stacked_mean - sd_sum_tpm)
+    )
   
   tpm_data_SorL_stackgenes$stack_group_order <- seq_len(length.out = nrow(tpm_data_SorL_stackgenes))
   

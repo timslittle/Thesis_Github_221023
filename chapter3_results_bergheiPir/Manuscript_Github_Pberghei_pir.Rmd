@@ -311,7 +311,7 @@ melted_tpm <- filter(berghei_tpm,
 
 ```{r stacked_barchart}
 sd_bars <- TRUE
-g_list <- stacked_barchart(melted_tpm,
+g_list <- stacked_barchart(melted_tpm = melted_tpm,
                            stack_group_name = 'SorL',
                            sd_bars = sd_bars,
                            inset = TRUE)

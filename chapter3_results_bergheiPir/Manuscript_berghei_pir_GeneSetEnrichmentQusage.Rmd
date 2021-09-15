@@ -105,26 +105,6 @@ ShortLong_list <- ShortLong_list[unlist(lapply(ShortLong_list, function(x) lengt
 
 What is the question that I actually want to answer? I have a lot of life stages and I want to know if each life stage contains an enrichment for transcription of certain groups of pirs compared to the others. So does this mean that I want to do a pairwise comparison, for each life cycle stage, versus every other identified stage? i.e. lapply for each stage with the 'labels' set as that stage and the rest all set to 'other'?
 
-
-```{r running_qusage_malevfemale}
-maleVfemale <- lapply(
-  list(pir_geneset), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Gam.Male-Gam.Female',
-                                gene_list,
-                                n.points = 2^18)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-
-lapply(maleVfemale, getElement, 'qstable')
-```
-
 ```{r post48livvearlyliv}
 
 post48livvearlyliv <- lapply(
@@ -286,44 +266,13 @@ berghei_comparison_stats_df <- bind_rows(
   arrange(contrast)
 ```
 
-```{r}
-max_logfold <- ceiling(max(max(berghei_comparison_stats_df$log.fold.change), 
-                           abs(min(berghei_comparison_stats_df$log.fold.change))))
-
-(
-  x <- ggplot(filter(berghei_comparison_stats_df,
-                     FDR < 0.05), 
-              aes(x = contrast, 
-                  y = reorder(pathway.name, dplyr::desc(pathway.name)))) +
-    xlab('Comparison') + ylab('Geneset') + 
-    # scale_x_discrete(labels= c(1,2,3,4,6)) +
-    geom_count(aes(
-      colour = log.fold.change), 
-      na.rm = TRUE) +
-    labs(colour = 'log2 Fold Change') +
-    scale_color_gradientn(
-      colours = rev(brewer.pal(11, "RdBu")),
-      na.value="transparent",
-      limits = c(-max_logfold,max_logfold),
-      # limits = c(-0.5,1.25)
-    ) +
-    scale_size_area(max_size = 6) +
-    theme_bw() +
-    theme(panel.grid.minor = element_blank(),
-          panel.background = element_rect(fill = 'white'),
-          plot.background = element_blank(),
-          legend.background = element_rect(fill = 'transparent'),
-          axis.text.x = element_text(angle = 90))
-)
-```
-
 ```{r mero_asex_malegam}
 mero_asex_malegam_stats_df <- filter(berghei_comparison_stats_df,
                                      contrast %in% c('Asex.Mixed-Liv.Meroz',
                                                      'Gam.Male-Asex.Mixed',
                                                      'Gam.Male-Liv.Meroz')) 
 
-order_path.names <- ordering(unique(mero_asex_malegam_stats_df$pathway.name), 
+order_path.names <- ordering(sort(unique(mero_asex_malegam_stats_df$pathway.name)), 
                              order_vector = c('pir', 
                                               'L', 'L[[:digit:]]', 
                                               'S', 'S[[:digit:]]'))
@@ -364,6 +313,84 @@ Heatmap(mero_asex_malegam_stats_df_cast,
 
 ```
 
+```{r running_qusage_stage_by_stage}
+ordered_stages <- ordering(unique(lifeCycle_labels),
+         order_vector = r_order_vector)
+
+comparisons <- c(
+  unlist(
+    lapply(seq_along(ordered_stages),
+           function(i){ if(i < length(ordered_stages)){ paste0(ordered_stages[i],'-',ordered_stages[i+1]) } }
+    )
+  ),
+  'Asex.Schiz-Gam.Male',
+  'Ook-Sporoz'
+)
+
+#Remove some comparisons
+comparisons <- comparisons[!grepl(comparisons, pattern = 'Asex\\.Mixed-Asex\\.Ring')]
+
+all_comparisons <- lapply(comparisons, 
+                          function(comparison){
+                            list_comp <- lapply(
+                              list(pir_geneset,
+                                   ShortLong_list,
+                                   subfam_list), 
+                              function(gene_list){
+                                qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
+                                                            lifeCycle_labels,
+                                                            comparison,
+                                                            gene_list,
+                                                            n.points = 2^18)
+                                list(results = qs.results.subfam, 
+                                     qstable = qsTable(qs.results.subfam) %>% 
+                                       mutate(contrast = qs.results.subfam$contrast))
+                              })
+                            names(list_comp) <- c('pir', 'shortlong', 'subfam')
+                            list_comp$combined <- bind_rows(lapply(list_comp, 
+                                                                   getElement, 
+                                                                   'qstable'))
+                            return(list_comp)
+                          })
+names(all_comparisons) <- comparisons
+
+all_stats_df <- lapply(all_comparisons, getElement, 'combined') %>% 
+  bind_rows %>% 
+  mutate(fdr_r = p.adjust(p.Value, method = 'fdr')) %>% 
+  arrange(fdr_r)
+
+all_stats_df <- all_stats_df[order(match(all_stats_df$pathway.name,order_path.names)),]
+
+all_stats_df_cast <- dcast(all_stats_df,
+                           contrast ~ pathway.name,
+                           value.var = 'log.fold.change') %>% 
+  column_to_rownames(var = 'contrast')
+
+all_stats_df_cast <- all_stats_df_cast[ordering(rownames(all_stats_df_cast),
+                                                r_order_vector),
+                                       order_path.names]
+
+Heatmap(all_stats_df_cast,
+        name = 'logFoldChange',
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        rect_gp = gpar(col = "white", lwd = 2),
+        cell_fun = function(j, i, x, y, width, height, fill){
+          fdr_val <- all_stats_df[
+            all_stats_df$contrast == rownames(all_stats_df_cast[i,]),
+          ]$fdr_r[j]
+          if(fdr_val<= 0.05){
+            grid.text(
+              sprintf("%.3f", #One significant figure
+                      fdr_val),
+              x,
+              y,
+              gp = gpar(fontsize = 10,
+                        fontface = 'bold')
+            )
+          }
+        })
+```
 
 ```{r save_xlsx}
 to_save <- bind_rows(
