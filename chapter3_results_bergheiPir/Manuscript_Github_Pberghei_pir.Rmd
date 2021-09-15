@@ -56,7 +56,6 @@ source('../rfunctions/uniquify_fun.R')
 source('../rfunctions/ordering_fun.R')
 source('../rfunctions/tpm_fun.R')
 source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
-source('../rfunctions/stacked_barchart_fun.R')
 ```
 
 ```{r ordering_vectors}
@@ -310,6 +309,7 @@ melted_tpm <- filter(berghei_tpm,
 ```
 
 ```{r stacked_barchart}
+source('../rfunctions/stacked_barchart_fun.R')
 sd_bars <- TRUE
 g_list <- stacked_barchart(melted_tpm = melted_tpm,
                            stack_group_name = 'SorL',
