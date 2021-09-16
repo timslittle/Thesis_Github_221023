@@ -266,53 +266,6 @@ berghei_comparison_stats_df <- bind_rows(
   arrange(contrast)
 ```
 
-```{r mero_asex_malegam}
-mero_asex_malegam_stats_df <- filter(berghei_comparison_stats_df,
-                                     contrast %in% c('Asex.Mixed-Liv.Meroz',
-                                                     'Gam.Male-Asex.Mixed',
-                                                     'Gam.Male-Liv.Meroz')) 
-
-order_path.names <- ordering(sort(unique(mero_asex_malegam_stats_df$pathway.name)), 
-                             order_vector = c('pir', 
-                                              'L', 'L[[:digit:]]', 
-                                              'S', 'S[[:digit:]]'))
-
-mero_asex_malegam_stats_df <- mero_asex_malegam_stats_df[order(match(mero_asex_malegam_stats_df$pathway.name,order_path.names)),]
-
-max_logfold <- ceiling(max(max(mero_asex_malegam_stats_df$log.fold.change), 
-                           abs(min(mero_asex_malegam_stats_df$log.fold.change))))
-
-mero_asex_malegam_stats_df_cast <- dcast(mero_asex_malegam_stats_df,
-      contrast ~ pathway.name,
-      value.var = 'log.fold.change') %>% 
-  column_to_rownames(var = 'contrast')
-
-mero_asex_malegam_stats_df_cast <- mero_asex_malegam_stats_df_cast[,order_path.names]
-  
-
-Heatmap(mero_asex_malegam_stats_df_cast,
-        name = 'logFoldChange',
-        cluster_rows = FALSE,
-        cluster_columns = FALSE,
-        rect_gp = gpar(col = "white", lwd = 2),
-        cell_fun = function(j, i, x, y, width, height, fill){
-          fdr_val <- mero_asex_malegam_stats_df[
-            mero_asex_malegam_stats_df$contrast == rownames(mero_asex_malegam_stats_df_cast[i,]),
-          ]$FDR[j]
-          if(fdr_val<= 0.1){
-            grid.text(
-              sprintf("%.3f", #One significant figure
-                      fdr_val),
-              x,
-              y,
-              gp = gpar(fontsize = 10,
-                        fontface = 'bold')
-            )
-          }
-        })
-
-```
-
 ```{r running_qusage_stage_by_stage}
 ordered_stages <- ordering(unique(lifeCycle_labels),
          order_vector = r_order_vector)
@@ -324,7 +277,9 @@ comparisons <- c(
     )
   ),
   'Asex.Schiz-Gam.Male',
-  'Ook-Sporoz'
+  'Ook-Sporoz',
+  'Gam.Male-Asex.Mixed',
+  'Gam.Male-Liv.Meroz'
 )
 
 #Remove some comparisons

@@ -331,7 +331,6 @@ if(global_save_var){
 
 ```
 
-
 ```{r table_of_SorL_highest_supptable}
 tpm_data_SorL_stackgenes <- g_list$data
 
