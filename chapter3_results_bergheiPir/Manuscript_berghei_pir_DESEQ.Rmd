@@ -46,6 +46,26 @@ library('DESeq2')
 library('apeglm')
 ```
 
+```{r sourcing_functions}
+source('../rfunctions/uniquify_fun.R')
+source('../rfunctions/ordering_fun.R')
+source('../rfunctions/tpm_fun.R')
+source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+```
+
+```{r ordering_vectors}
+order_vector <- c('Sporo', 'Liv-pre4h', 'Liv-pre47h', 'Liv-post48h',
+                 'Liv-2h','Liv-4h','Liv-12h', 'Liv-18h',
+                 'Liv-24h' ,'Liv-36h','48h','54h','60h',
+                 'Mero','Asex','Ring','Troph','Schiz',
+                 'Gam','Female','Male',
+                 '-Pre3h','BldMl-24h','Ook')
+
+r_order_vector <- str_replace_all(order_vector, 
+                                  pattern = '-', 
+                                  replacement = '\\.')
+```
+
 Download the data, and remove heterogeneous life cycle stages like 'Gam' and 'BldMl'. Will keep Asex.Mixed since we want to be able to compare that to other stages, although for each Asex stage we should remove the individual stages (like Rings) when looking at mixed, and the Mixed stages when looking at the inidvidual stages.
 
 Note that I'm using the count data with names updated by how I combined similar stages e.g. Liver.post48h.
@@ -74,8 +94,8 @@ pir_geneset <- list(pirs = pir_info$Geneid)
 ( coldata <- data.frame(
   row.names = colnames(berg_counts.mat),
   experiment = str_extract(colnames(berg_counts.mat), pattern = '^E[[:digit:]]{2}'),
-  stage = str_extract(colnames(berg_counts.mat), pattern = '(?<=E[[:digit:]]{2}_).+(?=_[[:digit:]]{1,2})')
-) )
+  stage = str_extract(colnames(berg_counts.mat), pattern = '(?<=E[[:digit:]]{2}_).+(?=_[[:digit:]]{1,2})')) 
+  )
 ```
 
 ```{r dds}
@@ -97,6 +117,12 @@ coef <- "stage_Gam.Male_vs_Asex.Mixed"
 dds.deseq.gamMale_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
                                                   coef = coef,
                                                   type = "apeglm")
+
+dds.deseq.gamMale_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% pir_info$Geneid,] %>% 
+  as.data.frame() %>% 
+  mutate(subfam = pir_info$clade[match(rownames(.), pir_info$Geneid)]) %>% 
+  arrange(padj)
+
 gamMale_v_asexMixed_df <- as.data.frame(
   dds.deseq.gamMale_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% c('PBANKA_0317181'),]
 ) %>% 
@@ -134,7 +160,6 @@ asexRing_v_asexMixed_df <- as.data.frame(
     rownames_to_column(var = 'Geneid')
 ```
 
-
 ```{r}
 dds$stage <- relevel(dds$stage, ref = 'Gam-Male')
 dds.maleGam.deseq <- DESeq(dds)
@@ -160,7 +185,6 @@ dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr <- lfcShrink(dds.maleGam.deseq,
     rownames_to_column(var = 'Geneid'))
 ```
 
-
 ```{r}
 (deseq_stats <- bind_rows(livMeroz_v_gamMale_df, 
           as.data.frame(gamMale_v_asexMixed_df),
@@ -177,5 +201,21 @@ write_xlsx(deseq_stats,
            'SupplementaryInformation4_Stats_DESEQ_berghei.xlsx')
 write.csv(deseq_stats, 
            'SupplementaryInformation4_Stats_DESEQ_berghei.csv')
+```
+
+```{r}
+ordered_stages <- ordering(unique(coldata$stage), order_vector = r_order_vector)
+comparisons <- c(
+  unlist(
+    lapply(seq_along(ordered_stages),
+           function(i){ if(i < length(ordered_stages)){ paste0(ordered_stages[i],'-',ordered_stages[i+1]) } }
+    )
+  ),
+  'Liv.post48h-Liv.24h',
+  'Asex.Schiz-Gam.Male',
+  'Ook-Sporoz',
+  'Gam.Male-Asex.Mixed',
+  'Gam.Male-Liv.Meroz'
+)
 ```
 

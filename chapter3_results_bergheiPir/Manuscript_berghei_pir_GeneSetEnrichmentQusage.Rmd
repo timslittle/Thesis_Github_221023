@@ -44,6 +44,26 @@ library('RColorBrewer')
 library('writexl')
 ```
 
+```{r sourcing_functions}
+source('../rfunctions/uniquify_fun.R')
+source('../rfunctions/ordering_fun.R')
+source('../rfunctions/tpm_fun.R')
+source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+```
+
+```{r ordering_vectors}
+order_vector <- c('Sporo', 'Liv-pre4h', 'Liv-pre47h', 'Liv-post48h',
+                 'Liv-2h','Liv-4h','Liv-12h', 'Liv-18h',
+                 'Liv-24h' ,'Liv-36h','48h','54h','60h',
+                 'Mero','Asex','Ring','Troph','Schiz',
+                 'Gam','Female','Male',
+                 '-Pre3h','BldMl-24h','Ook')
+
+r_order_vector <- str_replace_all(order_vector, 
+                                  pattern = '-', 
+                                  replacement = '\\.')
+```
+
 Download the data, and remove heterogeneous life cycle stages like 'Gam' and 'BldMl'. Will keep Asex.Mixed since we want to be able to compare that to other stages, although for each Asex stage we should remove the individual stages (like Rings) when looking at mixed, and the Mixed stages when looking at the individual stages.
 
 
@@ -126,146 +146,6 @@ post48livvearlyliv <- lapply(
 lapply(post48livvearlyliv, function(x) `$`(x,qstable))
 ```
 
-```{r livmero_livpost48}
-livmero_livpost48.results <- lapply(
-  list(pir_geneset,
-       ShortLong_list,
-       subfam_list), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Liv.Meroz-Liv.post48h',
-                                gene_list,
-                                n.points = 2^18)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-lapply(livmero_livpost48.results, function(x) `$`(x,qstable))
-```
-
-```{r asexRing_asexMix}
-asexRing_asexMix.results <- lapply(
-  list(pir_geneset,
-       subfam_list,
-       ShortLong_list), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Asex.Ring-Asex.Mixed',
-                                gene_list,
-                                n.points = 2^18)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-names(asexRing_asexMix.results) <- c('all', 'subfam', 'SorL')
-asexRing_asexMix.results$subfam$qstable
-asexRing_asexMix.results$SorL$qstable
-```
-
-
-```{r maleGam_v_Asex.Mix}
-maleGam_v_Asex.Mix.results <- lapply(
-  list(pir_geneset,
-    subfam_list, 
-    ShortLong_list), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Gam.Male-Asex.Mixed',
-                                gene_list,
-                                n.points = 2^18)
-    
-    # qs.results.df.fdr0.05 <- filter(qsTable(qs.results.subfam), 
-    #                                 FDR < 0.05)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-names(maleGam_v_Asex.Mix.results) <- c('all', 'subfam', 'SorL')
-
-plotGeneSetDistributions(maleGam_v_Asex.Mix.results$SorL$results, path.index =  'S')
-plotGeneSetDistributions(maleGam_v_Asex.Mix.results$SorL$results, path.index = 'L')
-plotGeneSetDistributions(maleGam_v_Asex.Mix.results$subfam$results, path.index = 'S4')
-mutate(maleGam_v_Asex.Mix.results$subfam$qstable , adjust = p.adjust(p.Value, method = 'fdr'))
-```
-
-```{r maleGam_v_Liv.Meroz}
-maleGam_v_Liv.Meroz.results <- lapply(
-  list(pir_geneset,
-    subfam_list, 
-    ShortLong_list), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Gam.Male-Liv.Meroz',
-                                gene_list,
-                                n.points = 2^18)
-    
-    # qs.results.df.fdr0.05 <- filter(qsTable(qs.results.subfam), 
-    #                                 FDR < 0.05)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-```
-
-```{r Asex.Mix_v_Liv.Meroz}
-Asex.Mix_v_Liv.Meroz.results <- lapply(
-  list(pir_geneset,
-    subfam_list, 
-    ShortLong_list), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Asex.Mixed-Liv.Meroz',
-                                gene_list,
-                                n.points = 2^18)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-names(Asex.Mix_v_Liv.Meroz.results) <- c('all', 'subfam', 'SorL')
-
-plotGeneSetDistributions(Asex.Mix_v_Liv.Meroz.results$SorL$results, 
-                         path.index = 'L')
-plotGeneSetDistributions(Asex.Mix_v_Liv.Meroz.results$SorL$results, 
-                         path.index = 'S')
-
-bind_rows(lapply(Asex.Mix_v_Liv.Meroz.results, 
-                 getElement, 
-                 'qstable')) %>% 
-  mutate(adjust = p.adjust(p.Value)) %>% 
-  arrange(adjust)
-```
-
-```{r fdr}
-berghei_comparison_stats_df <- bind_rows(
-  lapply(c(maleGam_v_Asex.Mix.results, 
-           maleGam_v_Liv.Meroz.results, 
-           Asex.Mix_v_Liv.Meroz.results,
-           maleVfemale, 
-           post48livvearlyliv, 
-           livmero_livpost48.results),
-         getElement,
-         'qstable')
-) %>% 
-  select(contrast, everything()) %>% 
-  mutate(FDR = p.adjust(p.Value, method = 'fdr')) %>% 
-  arrange(contrast)
-```
-
 ```{r running_qusage_stage_by_stage}
 ordered_stages <- ordering(unique(lifeCycle_labels),
          order_vector = r_order_vector)
@@ -276,6 +156,7 @@ comparisons <- c(
            function(i){ if(i < length(ordered_stages)){ paste0(ordered_stages[i],'-',ordered_stages[i+1]) } }
     )
   ),
+  'Liv.post48h-Liv.24h',
   'Asex.Schiz-Gam.Male',
   'Ook-Sporoz',
   'Gam.Male-Asex.Mixed',
