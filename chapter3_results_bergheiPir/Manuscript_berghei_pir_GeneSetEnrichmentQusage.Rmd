@@ -324,7 +324,11 @@ all_stats_df_cast <- dcast(all_stats_df,
 all_stats_df_cast <- all_stats_df_cast[ordering(rownames(all_stats_df_cast),
                                                 r_order_vector),
                                        order_path.names]
-
+png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_geneGroups.png",
+    width = 7,
+    height = 5,
+    units = "in",
+    res = 330)
 Heatmap(all_stats_df_cast,
         name = 'logFoldChange',
         cluster_rows = FALSE,
@@ -345,6 +349,7 @@ Heatmap(all_stats_df_cast,
             )
           }
         })
+dev.off()
 ```
 
 ```{r save_xlsx}

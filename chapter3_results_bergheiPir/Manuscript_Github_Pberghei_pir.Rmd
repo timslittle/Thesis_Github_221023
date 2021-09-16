@@ -759,7 +759,13 @@ g <- ggplot(gene_expression_df,
     legend.key.size = unit(4, 'mm')
   )
 
-g
+if(global_save_var){
+ggsave('plots/thesis_chapter3_figure_medTPM_pirvnonpir.png',
+         width = 7,
+         height = 5,
+         units = "in",
+         g)
+} 
 ```
 
 _pir_ expression on average ranges from minimum mean `r min(gene_expression_df[gene_expression_df$pir_gene == 'pir',]$mean_tpm)` TPM and median `r min(gene_expression_df[gene_expression_df$pir_gene == 'pir',]$med_tpm)` TPM to maximum mean `r max(gene_expression_df[gene_expression_df$pir_gene == 'pir',]$mean_tpm)` TPM and median `r max(gene_expression_df[gene_expression_df$pir_gene == 'pir',]$med_tpm)` TPM. Non-\ _pir_ expression ranges from minimum mean `r min(gene_expression_df[gene_expression_df$pir_gene == 'non-pir',]$mean_tpm)` TPM and median `r min(gene_expression_df[gene_expression_df$pir_gene == 'non-pir',]$med_tpm)` TPM to maximum mean `r max(gene_expression_df[gene_expression_df$pir_gene == 'non-pir',]$mean_tpm)` TPM and median `r max(gene_expression_df[gene_expression_df$pir_gene == 'non-pir',]$med_tpm)` TPM.
