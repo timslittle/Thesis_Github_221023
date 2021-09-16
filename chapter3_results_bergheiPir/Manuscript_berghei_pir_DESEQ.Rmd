@@ -51,11 +51,11 @@ Download the data, and remove heterogeneous life cycle stages like 'Gam' and 'Bl
 Note that I'm using the count data with names updated by how I combined similar stages e.g. Liver.post48h.
 
 ```{r read_count_data}
-berg_counts <- read_xlsx('Manuscript_Frontiers_suppinfo_bergheiCounts_UpdatedNames.xlsx')
+berg_counts <- read.csv('berghei_counts_newNames.csv',
+                        row.names = 2) %>% 
+  select(!matches('BldMl|Gam_|^X$'))
 
 #Filter low expressed genes (less than 1 count in all samples), convert to a matrix, add 1 for the log transformation, then transform to log2
-berg_counts <- column_to_rownames(berg_counts, var = 'Geneid') %>% 
-  select(!matches('BldMl|Gam_'))
 berg_counts.mat <- berg_counts[!rowSums(berg_counts) <= 10,] %>% 
   as.matrix
 
@@ -63,8 +63,8 @@ berg_counts.mat[1:5,1:5]
 ```
 
 ```{r generate_genesets}
-pir_info <- read_xlsx('Manuscript_Frontiers_SuppInfo_berghei.xlsx',
-                      sheet = 1)
+pir_info <- read.table('../standard_files/Pberghei_pir_clades.txt',
+                    header = TRUE)
 
 pir_geneset <- list(pirs = pir_info$Geneid)
 
