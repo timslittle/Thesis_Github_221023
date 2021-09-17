@@ -106,95 +106,12 @@ dds <- DESeqDataSetFromMatrix(countData = berg_counts.mat,
 ```
 
 ```{r deseq-ing}
-dds.deseq <- DESeq(dds)
+dds.deseq <- DESeq(dds,
+                   minReplicatesForReplace = 3)
 resultsNames(dds.deseq)
 ```
 
 Individual _pir_ genes which we use as examples of being highly upregulated in individual stages.
-
-```{r gamMale_v_asexMix}
-coef <- "stage_Gam.Male_vs_Asex.Mixed"
-dds.deseq.gamMale_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
-                                                  coef = coef,
-                                                  type = "apeglm")
-
-dds.deseq.gamMale_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% pir_info$Geneid,] %>% 
-  as.data.frame() %>% 
-  mutate(subfam = pir_info$clade[match(rownames(.), pir_info$Geneid)]) %>% 
-  arrange(padj)
-
-gamMale_v_asexMixed_df <- as.data.frame(
-  dds.deseq.gamMale_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% c('PBANKA_0317181'),]
-) %>% 
-  mutate(contrast = coef) %>% 
-  rownames_to_column(var = 'Geneid')
-```
-
-```{r}
-coef <- "stage_Liv.Meroz_vs_Asex.Mixed"
-res <- results(dds.deseq,
-               name = 'stage_Liv.Meroz_vs_Asex.Mixed',
-               cooksCutoff = FALSE)
-dds.deseq.livMeroz_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
-                                                  coef = coef,
-                                                  res = res,
-                                                  type = "apeglm")
-
-livMeroz_v_asexMixed_df <- as.data.frame(
-  dds.deseq.livMeroz_v_asexMixed.lfcShr[rownames(dds.deseq.gamMale_v_asexMixed.lfcShr) %in% c('PBANKA_0100500',
-                                                                                              'PBANKA_0600031'),]) %>%  
-  mutate(contrast = coef) %>% 
-  rownames_to_column(var = 'Geneid')
-```
-
-```{r asexRing_v_asexMixed}
-coef <- 'stage_Asex.Ring_vs_Asex.Mixed'
-
-dds.deseq.asexRing_v_asexMixed.lfcShr <- lfcShrink(dds.deseq, 
-                                                  coef = coef,
-                                                  type = "apeglm")
-asexRing_v_asexMixed_df <- as.data.frame(
-  dds.deseq.asexRing_v_asexMixed.lfcShr[rownames(dds.deseq.asexRing_v_asexMixed.lfcShr) %in% c('PBANKA_1300200'),]
-) %>% 
-  mutate(contrast = coef) %>% 
-    rownames_to_column(var = 'Geneid')
-```
-
-```{r}
-dds$stage <- relevel(dds$stage, ref = 'Gam-Male')
-dds.maleGam.deseq <- DESeq(dds)
-resultsNames(dds.maleGam.deseq)
-```
-
-```{r}
-coef <- "stage_Liv.Meroz_vs_Gam.Male"
-res <- results(dds.maleGam.deseq,
-               name = 'stage_Liv.Meroz_vs_Gam.Male',
-               cooksCutoff = FALSE)
-dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr <- lfcShrink(dds.maleGam.deseq, 
-                                                         coef = coef,
-                                                         res= res,
-                                                         type = "apeglm")
-
-(livMeroz_v_gamMale_df <- as.data.frame(
-  dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr[rownames(dds.maleGam.deseq.livMeroz_v_gamMale.lfcShr) %in% c('PBANKA_0317181',
-                                                                                                           'PBANKA_0100500',
-                                                                                                           'PBANKA_0600031'),]
-  ) %>%  
-  mutate(contrast = coef) %>% 
-    rownames_to_column(var = 'Geneid'))
-```
-
-```{r}
-(deseq_stats <- bind_rows(livMeroz_v_gamMale_df, 
-          as.data.frame(gamMale_v_asexMixed_df),
-          as.data.frame(livMeroz_v_asexMixed_df)) %>% 
-  mutate(FDR = p.adjust(pvalue, 
-                        method = 'fdr')) %>% 
-  select(-c(lfcSE, 
-            padj, 
-            pvalue)))
-```
 
 ```{r save_stats_df}
 write_xlsx(deseq_stats, 
@@ -242,7 +159,8 @@ shrunk.list <- lapply(comparisons,
 names(shrunk.list) <- unlist(lapply(comparisons, 
                                     function(comparison) paste0(comparison[1],'_',comparison[2])))
 sig_pirs <- bind_rows(shrunk.list) %>% 
-  mutate(fdr = p.adjust(pvalue)) %>% 
+  mutate(fdr = p.adjust(pvalue),
+         subfam = pir_clade$clade[match(Geneid, pir_clade$Geneid)]) %>% 
   arrange(subfam, Geneid) %>% 
   filter(fdr < 0.05)
 sig_pirs_order <- unique(sig_pirs$Geneid)
@@ -253,7 +171,8 @@ sig_pirs_cast <- dcast(sig_pirs,
 sig_pirs_cast <- sig_pirs_cast[ordering(rownames(sig_pirs_cast),
                               r_order_vector),
                      sig_pirs_order] 
-  
+
+sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031')
 
 Heatmap(sig_pirs_cast,
         name = 'logFoldChange',
