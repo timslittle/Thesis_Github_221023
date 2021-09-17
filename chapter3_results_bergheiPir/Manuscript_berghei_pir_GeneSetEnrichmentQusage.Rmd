@@ -195,7 +195,8 @@ all_stats_df <- lapply(all_comparisons, getElement, 'combined') %>%
   mutate(fdr_r = p.adjust(p.Value, method = 'fdr')) %>% 
   arrange(fdr_r)
 
-all_stats_df <- all_stats_df[order(match(all_stats_df$pathway.name,order_path.names)),]
+all_stats_df <- all_stats_df[order(match(all_stats_df$pathway.name, 
+                                         order_path.names)),]
 
 all_stats_df_cast <- dcast(all_stats_df,
                            contrast ~ pathway.name,
