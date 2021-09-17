@@ -138,7 +138,7 @@ comparisons <- c(
 )
 comparisons <- comparisons[-which(sapply(comparisons, is.null))]
 #Remove some comparisons
-comparisons <- comparisons[!grepl(comparisons, pattern = 'Asex\\.Mixed-Asex\\.Ring')]
+comparisons <- comparisons[!(grepl(comparisons, pattern = 'Asex\\.Mixed') & grepl(comparisons, pattern = 'Asex\\.Ring'))]
 
 shrunk.list <- lapply(comparisons, 
                       function(comparison){
@@ -172,8 +172,14 @@ sig_pirs_cast <- sig_pirs_cast[ordering(rownames(sig_pirs_cast),
                               r_order_vector),
                      sig_pirs_order] 
 
+sig_pirs %>% filter(Geneid %in% 'PBANKA_0317181')
 sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031')
 
+png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_inidvidualGenes.png",
+    width = 7,
+    height = 5,
+    units = "in",
+    res = 330)
 Heatmap(sig_pirs_cast,
         name = 'logFoldChange',
         cluster_rows = FALSE,
@@ -185,7 +191,7 @@ Heatmap(sig_pirs_cast,
         column_split = gsub(pir_clade$clade[match(colnames(sig_pirs_cast), pir_clade$Geneid)],
                             pattern = 'ancestral',
                             replacement = 'a')
-        )
-
+)
+dev.off()
 ```
 
