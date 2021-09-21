@@ -826,47 +826,6 @@ chab_percentile_all <- ecdf_percentile(chab_tpm)
 
 ## Phylogenetic Tree / Heatmap of percentile compared to all genes
 
-```{r tree_heatmap_all-genes}
-
-ancestral_df <- bind_rows(cyno_percentile_all,
-                          ovale_percentile_all,
-                          cb_percentile_all,
-                          vinck_percentile_all,
-                          coat_percentile_all,
-                          yoel_percentile_all,
-                          berg_percentile_all,
-                          chab_percentile_all,
-                          vivax_percentile_all)
-ancestral_data <- lapply(phylog$old.tip.label, function(id){
-  #If any of the pattern is in the string one will be TRUE
-  ratio <- if(any(str_detect(string = paste(id), 
-                             pattern = ancestral_df$Geneid))){
-    index_id <- str_detect(string = paste(id), 
-                           pattern = ancestral_df$Geneid)
-    ancestral_df$percentile[index_id]*100
-  }else{
-    NA
-  }
-  return(list(ratio = ratio))
-}) %>% 
-  bind_rows
-ancestral_data <- as.data.frame(ancestral_data)
-
-rownames(ancestral_data) <- phylog$tip.label
-
-breaks <- seq(0, 100, by = 10)
-
-(tr <- ggtree(phylog, 
-            branch.length = 'none',
-            layout = 'circular') +
-  geom_tiplab2(aes(angle=angle, x = x + 2.5), 
-               cex = 3, 
-               color='black',
-               font = 3) +
-  ggplot2::xlim(0,20) 
-)
-```
-
 ```{r heatmap_with_tree_figure6}
 
 p <- gheatmap(tr, 
