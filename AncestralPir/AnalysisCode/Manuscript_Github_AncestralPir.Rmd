@@ -907,5 +907,11 @@ p <- gheatmap(tr,
                                                     l = 0,
                                                     unit = "mm")))
 
-p
+if(global_save_var){
+  ggsave('plots/thesis_chapter3_figure_ancPhyloHeatmap.png',
+         width = 7,
+         height = 5,
+         units = "in",
+         p)
+}
 ```
