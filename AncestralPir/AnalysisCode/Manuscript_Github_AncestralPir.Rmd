@@ -14,8 +14,6 @@ With the 20 genes did a MUSCLE (v3.8.31) alignment, PhyML (v3.1)* building with 
   
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, results = FALSE, message = FALSE)
-knitr::opts_knit$set(root.dir = 
-                       "/Users/littlet/Dropbox (The Francis Crick)/Data/Manuscript_pirAnalysis_Github/AncestralPir/AnalysisCode")
 options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
 ```
 
@@ -51,89 +49,12 @@ library('dplyr')
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 ```
 
-```{r function_uniquify}
-uniquify <- function(vector_names, first_one = TRUE){
-  new_vector <- c()
-  df_num <- data.frame(names = unique(vector_names), rep = 1)
-  if(first_one){
-    duplicated_names <- unique(vector_names[duplicated(vector_names)])
-  }else{
-    duplicated_names <- c()
-  }
-  for(i in 1:length(vector_names)){
-    if(vector_names[i] %in% duplicated_names|!first_one){
-    name <- paste(vector_names[i],
-                  df_num$rep[match(vector_names[i], df_num$names)],
-                  sep = '_')
-    #Increase rep counter
-    df_num$rep[match(vector_names[i], df_num$names)] <- df_num$rep[match(vector_names[i], df_num$names)] + 1
-    new_vector[i] <- name
-    }else{
-      new_vector[i] <- vector_names[i]
-    }
-  }
-  new_vector
-}
-```
-
-```{r tpm_function}
-tpm = function(count_data, lengths) {
-  
-  #Print an error if the id columns do not match
-  # first if statement to test that both have a GeneID column
-  if(any(grepl(colnames(lengths), 
-               pattern = 'id', 
-               ignore.case = T)) == T & any(grepl(colnames(count_data), 
-                                                  pattern = 'Geneid', 
-                                                  #This needs to be Geneid when some of the samples have 'id' in them
-                                                  ignore.case = T)) == T){
-    if(all(count_data[grep(colnames(count_data), 
-                           pattern = 'Geneid', ignore.case = T)] == lengths[grep(colnames(lengths), 
-                                                                             pattern = 'id', ignore.case = T)])) {
-      print('Count data and length gene ids both match')
-    } else {
-      print('Warning:Count data and length gene ids DO NOT MATCH')
-    }
-  } else {
-    print('Count data and/or length table supplied do not have an id column, 
-          make sure they are ordered correctly')
-  }
-  
-  #Remove the id column from supplied count_data
-  if(any(grepl(colnames(count_data), pattern = 'Geneid',ignore.case = TRUE))){
-    gene_names <- count_data[,grep(colnames(count_data), pattern = 'Geneid', ignore.case = TRUE)]
-    counts_tpm <- count_data[,-grep(colnames(count_data), pattern = 'Geneid', ignore.case = TRUE)]
-  }else{
-    counts_tpm <- count_data}
-  
-  #Remove the id column from supplied lengths
-  if(any(grepl(colnames(lengths), pattern = 'id', ignore.case = TRUE))){
-    lengths.table = lengths[,grep(colnames(lengths), pattern = 'length', ignore.case = T)]
-  }else{
-    lengths.table <- lengths}
-  #Making lengths.table a matrix sometimes throws up problems
-  lengths.table = as.matrix(lengths.table)
-  #This may make lengths.table a vector which can bring up some dimension problems in the following for loop
-  
-  #Now for the actual calculation
-  rpm <- counts_tpm
-  for (i in 1:dim(counts_tpm)[2]) {
-    for (j in 1:dim(counts_tpm)[1]) {
-      rpm[j,i] <- (counts_tpm[j,i]/(lengths.table[j]/1000))
-    }
-    scale.factor <- sum(rpm[,i])/(1E6)
-    counts_tpm[,i] <- apply(rpm[,i,drop=F],1,function(x){x/scale.factor})
-  }
-  colnames(counts_tpm) <- 'tpm'
-  if(any(grepl(colnames(count_data), pattern = 'Geneid', ignore.case = T)) == T){
-    counts_tpm = bind_cols(count_data[,grep(colnames(count_data), 
-                                            pattern = 'Geneid', 
-                                            ignore.case = T), 
-                                      drop = FALSE],
-                           counts_tpm)
-  } 
-  return(counts_tpm)
-}
+```{r sourcing_functions}
+source('../../rfunctions/uniquify_fun.R')
+source('../../rfunctions/ordering_fun.R')
+source('../../rfunctions/tpm_fun.R')
+source('../../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+source('../../rfunctions/ecdf_percentile_fun.R')
 ```
 
 ```{r function_get_ecdf_percentile}
@@ -667,7 +588,8 @@ coat_transcript_lengths_path <- list.files('../../genomes_genes_annotations/',
                       full.names = TRUE)
 coat_transcript_lengths <- read_csv(coat_transcript_lengths_path) %>% 
   mutate(Geneid = `Gene ID`) %>% 
-  select(c(Geneid, `Transcript Length`))
+  rename(Transcript.Length = `Transcript Length`) %>% 
+  select(c(Geneid, Transcript.Length ))
 
 coat_tpm <- tpm(coat, 
                 coat_transcript_lengths)
@@ -682,7 +604,7 @@ coat_tpm <- coat_tpm %>%
 (coat_tpm$ancestral_ortholog %>% sum)
 coat_anc_v_nonanc <- coat_tpm %>% 
   group_by(ancestral_ortholog) %>% 
-  dplyr::summarise_at(vars(matches('tpm')), 
+  dplyr::summarise_at(vars(matches('WB')), 
                       list(~median(.))) %>% 
   melt(id.vars = 'ancestral_ortholog') %>% 
   group_by(ancestral_ortholog) %>% 
@@ -831,7 +753,7 @@ yoel_lengths %>% group_by(Geneid) %>% dplyr::summarise(n = n()) %>% dplyr::arran
 #This gives 5074.5 so need to make sure that not having an integer count messes up things but it shouldn't
 yoel_lengths <- yoel_lengths %>% 
   group_by(Geneid) %>% 
-  dplyr::summarise(length = median(length))
+  dplyr::summarise(Transcript.Length  = median(length))
 nrow(yoel_lengths)
 nrow(yoel_counts)
 
@@ -839,7 +761,8 @@ yoel_tpm <- tpm(count_data = yoel_counts, lengths = yoel_lengths)
 yoel_tpm <- yoel_tpm %>% 
   mutate(Description = yoel_counts_full$Description[match(Geneid, 
                                                           yoel_counts_full$Geneid)]) %>% 
-  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0))
+  mutate(ancestral_ortholog = ifelse(Geneid %in% gene_names,1,0)) %>% 
+  rename(tpm = Counts)
 
 yoel_tpm_pir <- yoel_tpm %>% 
   filter(str_detect(Description, pattern = 'PIR|YIR') | ancestral_ortholog == 1) %>% 

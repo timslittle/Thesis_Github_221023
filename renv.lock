@@ -229,6 +229,13 @@
       "Source": "Bioconductor",
       "Hash": "f558c55a285751bd72af11d2bb853521"
     },
+    "SQUAREM": {
+      "Package": "SQUAREM",
+      "Version": "2021.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "0cf10dab0d023d5b46a5a14387556891"
+    },
     "SparseM": {
       "Package": "SparseM",
       "Version": "1.81",
@@ -280,6 +287,20 @@
       "Version": "1.12.0",
       "Source": "Bioconductor",
       "Hash": "3f89d2a4ad516fb1e77c06197c486fec"
+    },
+    "aplot": {
+      "Package": "aplot",
+      "Version": "0.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f80e807122f82f054b136cf1fcb7d5dd"
+    },
+    "ashr": {
+      "Package": "ashr",
+      "Version": "2.2-47",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c42c5b53d51fa85e3d4267b307f9e9e4"
     },
     "askpass": {
       "Package": "askpass",
@@ -554,6 +575,13 @@
       "Repository": "CRAN",
       "Hash": "05901bd61be60fd3bfc5b7d7c3517d1d"
     },
+    "etrunct": {
+      "Package": "etrunct",
+      "Version": "0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "d1cdcd7d3ee4de411b7a29877a5e322a"
+    },
     "evaluate": {
       "Package": "evaluate",
       "Version": "0.14",
@@ -671,12 +699,33 @@
       "Repository": "CRAN",
       "Hash": "bec9e66131b3d954917a59827ab8c2ee"
     },
+    "ggfun": {
+      "Package": "ggfun",
+      "Version": "0.0.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e274c8e45bac263256ae345e867527df"
+    },
+    "ggnewscale": {
+      "Package": "ggnewscale",
+      "Version": "0.4.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "5d2d9029aa89360eb283e3d10ab8bf42"
+    },
     "ggplot2": {
       "Package": "ggplot2",
       "Version": "3.3.3",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "3eb6477d01eb5bbdc03f7d5f70f2733e"
+    },
+    "ggplotify": {
+      "Package": "ggplotify",
+      "Version": "0.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "acbcedf783cdb8710168aa0edba42ac0"
     },
     "ggpubr": {
       "Package": "ggpubr",
@@ -706,6 +755,26 @@
       "Repository": "CRAN",
       "Hash": "b1c9776ac546b9f3c51c9b21ba8f6869"
     },
+    "ggstance": {
+      "Package": "ggstance",
+      "Version": "0.3.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "2fed8b95e6159315d5a024a2e28d07c4"
+    },
+    "ggtree": {
+      "Package": "ggtree",
+      "Version": "3.1.4.992",
+      "Source": "GitHub",
+      "Remotes": "GuangchuangYu/treeio",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "ggtree",
+      "RemoteUsername": "YuLab-SMU",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "5d2d10d4a5b99404c85fd4bb97e2f6948e13c64b",
+      "Hash": "8263bc024d34488b3df1643adbe8ae04"
+    },
     "glue": {
       "Package": "glue",
       "Version": "1.4.2",
@@ -719,6 +788,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "7d7f283939f563670a697165b2cf5560"
+    },
+    "gridGraphics": {
+      "Package": "gridGraphics",
+      "Version": "0.5-1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "5b79228594f02385d4df4979284879ae"
     },
     "gtable": {
       "Package": "gtable",
@@ -768,6 +844,20 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "a525aba14184fec243f9eaec62fbed43"
+    },
+    "invgamma": {
+      "Package": "invgamma",
+      "Version": "1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "d124cd1623454d8aeaaec5d67cf1d146"
+    },
+    "irlba": {
+      "Package": "irlba",
+      "Version": "2.3.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "a9ad517358000d57022401ef18ee657a"
     },
     "isoband": {
       "Package": "isoband",
@@ -922,6 +1012,13 @@
       "Repository": "CRAN",
       "Hash": "eaee7d2a6f3ed4491df868611cb064cc"
     },
+    "mixsqp": {
+      "Package": "mixsqp",
+      "Version": "0.3-43",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e1b117daee4dfaebad99ab9a4606dd5d"
+    },
     "munsell": {
       "Package": "munsell",
       "Version": "0.5.0",
@@ -977,6 +1074,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "f1b1ca1254ccb485dccc9c0dc65a2c36"
+    },
+    "patchwork": {
+      "Package": "patchwork",
+      "Version": "1.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c446b30cb33ec125ff02588b60660ccb"
     },
     "pbkrtest": {
       "Package": "pbkrtest",
@@ -1278,12 +1382,32 @@
       "Repository": "CRAN",
       "Hash": "7243004a708d06d4716717fa1ff5b2fe"
     },
+    "tidytree": {
+      "Package": "tidytree",
+      "Version": "0.3.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "965f7475f20755912526a38f5648963b"
+    },
     "tinytex": {
       "Package": "tinytex",
       "Version": "0.33",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "6e0ad90ac5669e35d5456cb61b295acb"
+    },
+    "treeio": {
+      "Package": "treeio",
+      "Version": "1.14.4",
+      "Source": "Bioconductor",
+      "Hash": "ced01e00c76cf6f58d7a693d05d5a7bf"
+    },
+    "truncnorm": {
+      "Package": "truncnorm",
+      "Version": "1.0-8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "cc8b5bfa01c930ccb56d3051e515fbd8"
     },
     "tzdb": {
       "Package": "tzdb",
@@ -1375,6 +1499,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "2826c5d9efb0a88f657c7a679c7106db"
+    },
+    "yulab.utils": {
+      "Package": "yulab.utils",
+      "Version": "0.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "a60fcb170dc97ae6d7fbe0ba15a19c69"
     },
     "zip": {
       "Package": "zip",
