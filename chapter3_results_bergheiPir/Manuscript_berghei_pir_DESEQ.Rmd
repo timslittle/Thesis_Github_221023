@@ -111,18 +111,16 @@ dds.deseq <- DESeq(dds,
 resultsNames(dds.deseq)
 ```
 
-Individual _pir_ genes which we use as examples of being highly upregulated in individual stages.
+Having looked into independent filter cut-offs, no genes are removed even by ludicrous 'alpha' values, so I assume that our dataset contains few low expressed genes (remember that we filtered low counts out earlier) or outliers of concern.
 
-Having looked into independent filter cut-offs, no genes are removed even by ludicrous 'alpha' values, so I assume that our dataset contains few low expressed genes (remember that we filtered low counts out earlier) or outliars of concern.
-
-```{r}
+```{r comparisons_ordering}
 ordered_stages <- ordering(unique(coldata$stage), order_vector = r_order_vector)
 comparisons <- c(
   lapply(seq_along(ordered_stages),
          function(i){ if(i < length(ordered_stages)){ c(ordered_stages[i+1],ordered_stages[i]) } }
   ),
   list(
-    c('Liv.24h','Liv.post48h'),
+    c('Liv.post48h','Liv.24h'),
     c('Gam.Male','Asex.Schiz'),
     c('Sporoz','Ook'),
     c('Gam.Male','Asex.Mixed'),
@@ -132,7 +130,9 @@ comparisons <- c(
 comparisons <- comparisons[-which(sapply(comparisons, is.null))]
 #Remove some comparisons
 comparisons <- comparisons[!(grepl(comparisons, pattern = 'Asex\\.Mixed') & grepl(comparisons, pattern = 'Asex\\.Ring'))]
+```
 
+```{r lfcShrink}
 shrunk.list <- lapply(comparisons, 
                       function(comparison){
                         res <- results(
@@ -152,21 +152,32 @@ shrunk.list <- lapply(comparisons,
 names(shrunk.list) <- unlist(lapply(comparisons, 
                                     function(comparison) paste0(comparison[1],'_',comparison[2])))
 sig_pirs <- bind_rows(shrunk.list) %>% 
-  mutate(fdr = p.adjust(pvalue),
-         subfam = pir_clade$clade[match(Geneid, pir_clade$Geneid)]) %>% 
+  mutate(subfam = pir_clade$clade[match(Geneid, pir_clade$Geneid)]) %>% 
   arrange(subfam, Geneid) %>% 
-  filter(fdr < 0.05)
+  filter(padj < 0.05)
 sig_pirs_order <- unique(sig_pirs$Geneid)
 sig_pirs_cast <- dcast(sig_pirs,
-                  comp ~ Geneid,
-                  value.var = 'log2FoldChange') %>% 
+                       comp ~ Geneid,
+                       value.var = 'log2FoldChange') %>% 
   column_to_rownames(var = 'comp')
 sig_pirs_cast <- sig_pirs_cast[ordering(rownames(sig_pirs_cast),
-                              r_order_vector),
-                     sig_pirs_order] 
+                                        c(r_order_vector,
+                                          'Gam.Male_Asex.Mixed',
+                                          'Gam.Male_Liv.Meroz')),
+                               sig_pirs_order] 
 
 sig_pirs %>% filter(Geneid %in% 'PBANKA_0317181')
 sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031')
+```
+
+```{r heatmap}
+#Add a new-line to the S6 label so that it doesn't overlap with others
+pir_column_split <- gsub(pir_clade$clade[match(colnames(sig_pirs_cast), pir_clade$Geneid)],
+                         pattern = 'ancestral',
+                         replacement = 'a')
+pir_column_split <- ifelse(pir_column_split %in% c('S6', 'L2'), 
+                           paste0(pir_column_split, '\n'),
+                           pir_column_split)
 
 png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_inidvidualGenes.png",
     width = 7,
@@ -179,11 +190,13 @@ Heatmap(sig_pirs_cast,
         cluster_columns = FALSE,
         # rect_gp = gpar(col = "white", lwd = 1),
         border_gp = gpar(col = "black", lty = 1),
+        column_title_gp = gpar(fontsize = 12),
         na_col = 'white',
         show_column_names = FALSE,
-        column_split = gsub(pir_clade$clade[match(colnames(sig_pirs_cast), pir_clade$Geneid)],
-                            pattern = 'ancestral',
-                            replacement = 'a')
+        column_split = pir_column_split,
+        heatmap_height = unit(10, "cm"),
+        #Shrink heatmap a little so that the S6 label is visible
+        column_gap = unit(2, 'mm')
 )
 dev.off()
 ```
