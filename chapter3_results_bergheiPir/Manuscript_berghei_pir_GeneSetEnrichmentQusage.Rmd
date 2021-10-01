@@ -121,7 +121,7 @@ ShortLong_list <-
 names(ShortLong_list) <- unique(pir_info$SorL)
 ShortLong_list <- ShortLong_list[unlist(lapply(ShortLong_list, function(x) length(x) > 3))]
 
-order_path.names <- ordering(c('pirs', unique(pir_info$SorL), unique(pir_info$clade)), 
+order_path.names <- ordering(c('pirs', unique(pir_info$SorL), sort(unique(pir_info$clade))), 
                              order_vector = c('pir','L','S'))
 
 ```
@@ -141,8 +141,8 @@ comparisons <- c(
     )
   ),
   'Liv.post48h-Liv.24h',
-  'Asex.Schiz-Gam.Male',
-  'Ook-Sporoz',
+  'Gam.Male-Asex.Schiz',
+  'Sporoz-Ook',
   'Gam.Male-Asex.Mixed',
   'Gam.Male-Liv.Meroz'
 )
@@ -183,9 +183,11 @@ all_stats_df_cast <- dcast(all_stats_df,
   column_to_rownames(var = 'contrast')
 
 all_stats_df_cast <- all_stats_df_cast[ordering(rownames(all_stats_df_cast),
-                                                r_order_vector),
-                                       order(match(colnames(all_stats_df_cast), 
-                                                   order_path.names))]
+                                                c(r_order_vector,
+                                                  'Gam.Male-Asex.Mixed',
+                                                  'Gam.Male-Liv.Meroz')),
+                                                order(match(colnames(all_stats_df_cast), 
+                                                            order_path.names))]
 
 png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_geneGroups.png",
     width = 7,
