@@ -224,23 +224,9 @@ dev.off()
 ```
 
 ```{r save_xlsx}
-to_save <- bind_rows(
-  lapply(c(maleGam_v_Asex.Mix.results, 
-           maleGam_v_Liv.Meroz.results, 
-           Asex.Mix_v_Liv.Meroz.results,
-           maleVfemale, 
-           post48livvearlyliv, 
-           livmero_livpost48.results),
-         getElement,
-         'qstable')
-) %>% 
-  select(contrast, everything()) %>% 
-  mutate(FDR = p.adjust(p.Value, method = 'fdr')) %>% 
-  arrange(contrast, pathway.name)
-
-write_xlsx(to_save,
+write_xlsx(all_stats_df,
            path = 'SupplementaryInformation_Stats_Qusage_berghei.xlsx')
-write.csv(to_save,
+write.csv(all_stats_df,
           'SupplementaryInformation_Stats_Qusage_berghei.csv')
 ```
 
