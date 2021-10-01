@@ -113,25 +113,18 @@ resultsNames(dds.deseq)
 
 Individual _pir_ genes which we use as examples of being highly upregulated in individual stages.
 
-```{r save_stats_df}
-write_xlsx(deseq_stats, 
-           'SupplementaryInformation4_Stats_DESEQ_berghei.xlsx')
-write.csv(deseq_stats, 
-           'SupplementaryInformation4_Stats_DESEQ_berghei.csv')
-```
-
 Having looked into independent filter cut-offs, no genes are removed even by ludicrous 'alpha' values, so I assume that our dataset contains few low expressed genes (remember that we filtered low counts out earlier) or outliars of concern.
 
 ```{r}
 ordered_stages <- ordering(unique(coldata$stage), order_vector = r_order_vector)
 comparisons <- c(
   lapply(seq_along(ordered_stages),
-         function(i){ if(i < length(ordered_stages)){ c(ordered_stages[i],ordered_stages[i+1]) } }
+         function(i){ if(i < length(ordered_stages)){ c(ordered_stages[i+1],ordered_stages[i]) } }
   ),
   list(
-    c('Liv.post48h','Liv.24h'),
-    c('Asex.Schiz','Gam.Male'),
-    c('Ook','Sporoz'),
+    c('Liv.24h','Liv.post48h'),
+    c('Gam.Male','Asex.Schiz'),
+    c('Sporoz','Ook'),
     c('Gam.Male','Asex.Mixed'),
     c('Gam.Male','Liv.Meroz')
   )
@@ -195,3 +188,13 @@ Heatmap(sig_pirs_cast,
 dev.off()
 ```
 
+```{r save_stats_df}
+sig_pirs_cast
+
+write_xlsx(deseq_stats, 
+           'SupplementaryInformation4_Stats_DESEQ_berghei.xlsx')
+write.csv(deseq_stats, 
+           'SupplementaryInformation4_Stats_DESEQ_berghei.csv')
+# deseq_stats <- read.csv('SupplementaryInformation4_Stats_DESEQ_berghei.csv',
+#                         row.names = 1)
+```

@@ -22,7 +22,6 @@ library('readr')
 library('dplyr')
 library('purrr')
 library('ggplot2')
-library('DESeq2')
 library("RColorBrewer")
 library('colorspace')
 library('data.table')
@@ -37,12 +36,7 @@ library('reshape2')
 library('circlize') # for circular plots
 library('cluster')    # clustering algorithms
 library('factoextra') # clustering algorithms & visualization
-library('ggfortify') # so ggplot understands prcomp objects
-library('ape') # for phylogeny plotting
 library('dendextend') # for dendrogram plotting
-library('plotly')
-library('ggpattern')
-library('ComplexHeatmap')
 library('ggdendro') #Drawing ggplot dendrograms
 
 #Colour blind friendly palette
@@ -224,7 +218,10 @@ berghei_counts <- read.csv('tl20-05_berghei_counts.csv',
 berghei_tpm <- tpm(count_data = berghei_counts,
                    lengths = lengths.transcript)
 
-apply(berghei_tpm[-1], 2, sum)
+#Do they all sum to 1e6? Note that all.equal allows for a tiny bit of difference which is okay.
+all.equal(apply(berghei_tpm[-1], 2, sum), 
+          rep(1e6, times = dim(berghei_tpm[-1])[2]), 
+          check.names = FALSE)
 ```
 
 ```{r check_tpm}
