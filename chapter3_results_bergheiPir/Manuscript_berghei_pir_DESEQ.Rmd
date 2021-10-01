@@ -172,12 +172,13 @@ sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031')
 
 ```{r heatmap}
 #Add a new-line to the S6 label so that it doesn't overlap with others
-pir_column_split <- gsub(pir_clade$clade[match(colnames(sig_pirs_cast), pir_clade$Geneid)],
-                         pattern = 'ancestral',
-                         replacement = 'a')
-pir_column_split <- ifelse(pir_column_split %in% c('S6', 'L2'), 
-                           paste0(pir_column_split, '\n'),
-                           pir_column_split)
+pir_column_split <- gsub(
+  gsub(pir_clade$clade[match(colnames(sig_pirs_cast), pir_clade$Geneid)],
+       pattern = 'ancestral',
+       replacement = 'a'),
+  pattern = '(S6|L2)',
+  replacement = '\\1\n'
+)
 
 png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_inidvidualGenes.png",
     width = 7,
