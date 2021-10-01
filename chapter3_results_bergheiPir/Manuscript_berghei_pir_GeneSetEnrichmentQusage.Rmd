@@ -42,6 +42,7 @@ library('ggplot2')
 library('stringr')
 library('RColorBrewer')
 library('writexl')
+library('ComplexHeatmap')
 ```
 
 ```{r sourcing_functions}
@@ -175,7 +176,7 @@ all_comparisons <- lapply(comparisons,
 names(all_comparisons) <- comparisons
 
 all_stats_df <- lapply(all_comparisons, getElement, 'combined') %>% 
-  bind_rows 
+  bind_rows
 
 all_stats_df_cast <- dcast(all_stats_df,
                            contrast ~ pathway.name,
@@ -200,10 +201,11 @@ Heatmap(all_stats_df_cast,
         cluster_columns = FALSE,
         rect_gp = gpar(col = "white", lwd = 2),
         cell_fun = function(j, i, x, y, width, height, fill){
-          stat_df <- all_stats_df[all_stats_df$contrast == rownames(all_stats_df_cast[i,]),]
-          fdr_val <- stat_df$FDR[j]
-          logfold <- stat_df$log.fold.change[j]
-          if(fdr_val<= 0.05){
+          stat_df <- all_stats_df[all_stats_df$contrast == rownames(all_stats_df_cast)[i],]
+          stat_df <- stat_df[stat_df$pathway.name == colnames(all_stats_df_cast)[j],]
+          fdr_val <- stat_df$FDR
+          logfold <- stat_df$log.fold.change
+          if(fdr_val <= 0.05){
             grid.text(
               sprintf("%.3f", #One significant figure
                       fdr_val),
