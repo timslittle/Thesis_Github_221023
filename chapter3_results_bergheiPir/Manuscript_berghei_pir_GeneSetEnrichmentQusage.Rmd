@@ -121,30 +121,14 @@ ShortLong_list <-
 names(ShortLong_list) <- unique(pir_info$SorL)
 ShortLong_list <- ShortLong_list[unlist(lapply(ShortLong_list, function(x) length(x) > 3))]
 
+order_path.names <- ordering(c('pirs', unique(pir_info$SorL), unique(pir_info$clade)), 
+                             order_vector = c('pir','L','S'))
+
 ```
 
 What is the question that I actually want to answer? I have a lot of life stages and I want to know if each life stage contains an enrichment for transcription of certain groups of pirs compared to the others. So does this mean that I want to do a pairwise comparison, for each life cycle stage, versus every other identified stage? i.e. lapply for each stage with the 'labels' set as that stage and the rest all set to 'other'?
 
-```{r post48livvearlyliv}
-
-post48livvearlyliv <- lapply(
-  list(pir_geneset,
-    ShortLong_list), 
-  function(gene_list){
-    qs.results.subfam <- qusage(berg_tpm_log2plus1.mat,
-                                lifeCycle_labels,
-                                'Liv.post48h-Liv.24h',
-                                gene_list,
-                                n.points = 2^18)
-    
-    list(results = qs.results.subfam, 
-         qstable = qsTable(qs.results.subfam) %>% 
-           mutate(contrast = qs.results.subfam$contrast))
-  }
-)
-
-lapply(post48livvearlyliv, function(x) `$`(x,qstable))
-```
+Edit to not do FDR again for all comparisons together, and reversing the order of labels/logFoldchanges to better match actual transitions.
 
 ```{r running_qusage_stage_by_stage}
 ordered_stages <- ordering(unique(lifeCycle_labels),
@@ -153,7 +137,7 @@ ordered_stages <- ordering(unique(lifeCycle_labels),
 comparisons <- c(
   unlist(
     lapply(seq_along(ordered_stages),
-           function(i){ if(i < length(ordered_stages)){ paste0(ordered_stages[i],'-',ordered_stages[i+1]) } }
+           function(i){ if(i < length(ordered_stages)){ paste0(ordered_stages[i+1],'-',ordered_stages[i]) } }
     )
   ),
   'Liv.post48h-Liv.24h',
@@ -191,12 +175,7 @@ all_comparisons <- lapply(comparisons,
 names(all_comparisons) <- comparisons
 
 all_stats_df <- lapply(all_comparisons, getElement, 'combined') %>% 
-  bind_rows %>% 
-  mutate(fdr_r = p.adjust(p.Value, method = 'fdr')) %>% 
-  arrange(fdr_r)
-
-all_stats_df <- all_stats_df[order(match(all_stats_df$pathway.name, 
-                                         order_path.names)),]
+  bind_rows 
 
 all_stats_df_cast <- dcast(all_stats_df,
                            contrast ~ pathway.name,
@@ -205,7 +184,9 @@ all_stats_df_cast <- dcast(all_stats_df,
 
 all_stats_df_cast <- all_stats_df_cast[ordering(rownames(all_stats_df_cast),
                                                 r_order_vector),
-                                       order_path.names]
+                                       order(match(colnames(all_stats_df_cast), 
+                                                   order_path.names))]
+
 png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_geneGroups.png",
     width = 7,
     height = 5,
@@ -217,9 +198,9 @@ Heatmap(all_stats_df_cast,
         cluster_columns = FALSE,
         rect_gp = gpar(col = "white", lwd = 2),
         cell_fun = function(j, i, x, y, width, height, fill){
-          fdr_val <- all_stats_df[
-            all_stats_df$contrast == rownames(all_stats_df_cast[i,]),
-          ]$fdr_r[j]
+          stat_df <- all_stats_df[all_stats_df$contrast == rownames(all_stats_df_cast[i,]),]
+          fdr_val <- stat_df$FDR[j]
+          logfold <- stat_df$log.fold.change[j]
           if(fdr_val<= 0.05){
             grid.text(
               sprintf("%.3f", #One significant figure
@@ -227,7 +208,8 @@ Heatmap(all_stats_df_cast,
               x,
               y,
               gp = gpar(fontsize = 10,
-                        fontface = 'bold')
+                        fontface = 'bold',
+                        col = ifelse(logfold > 2, 'white', 'black'))
             )
           }
         })
