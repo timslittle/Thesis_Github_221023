@@ -202,12 +202,13 @@ dev.off()
 ```
 
 ```{r save_stats_df}
-sig_pirs_cast
+deseq_stats <- bind_rows(shrunk.list) %>% 
+  mutate(subfam = pir_clade$clade[match(Geneid, pir_clade$Geneid)]) %>% 
+  arrange(subfam, Geneid)
 
 write_xlsx(deseq_stats, 
            'SupplementaryInformation4_Stats_DESEQ_berghei.xlsx')
 write.csv(deseq_stats, 
            'SupplementaryInformation4_Stats_DESEQ_berghei.csv')
-# deseq_stats <- read.csv('SupplementaryInformation4_Stats_DESEQ_berghei.csv',
-#                         row.names = 1)
+
 ```
