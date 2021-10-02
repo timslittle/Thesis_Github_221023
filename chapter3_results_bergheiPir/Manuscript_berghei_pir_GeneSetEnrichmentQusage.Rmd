@@ -149,7 +149,7 @@ comparisons <- c(
 )
 
 #Remove some comparisons
-comparisons <- comparisons[!grepl(comparisons, pattern = 'Asex\\.Mixed-Asex\\.Ring')]
+comparisons <- comparisons[!grepl(comparisons, pattern = 'Asex\\.Ring-Asex\\.Mixed')]
 
 all_comparisons <- lapply(comparisons, 
                           function(comparison){
