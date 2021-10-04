@@ -254,6 +254,11 @@ Heatmap(all_stats_df_cast,
 dev.off()
 ```
 
+```{r specfiic_stats}
+all_stats_df %>% 
+  filter(contrast == 'Liv.post48h-Liv.24h')
+```
+
 ```{r save_xlsx}
 write_xlsx(all_stats_df,
            path = 'SupplementaryInformation_Stats_Qusage_berghei.xlsx')

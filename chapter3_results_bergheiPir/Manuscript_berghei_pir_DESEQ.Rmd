@@ -153,10 +153,12 @@ shrunk.list <- lapply(comparisons,
                       })
 names(shrunk.list) <- unlist(lapply(comparisons, 
                                     function(comparison) paste0(comparison[1],'_',comparison[2])))
-sig_pirs <- bind_rows(shrunk.list) %>% 
+
+deseq_stats <- bind_rows(shrunk.list) %>% 
   mutate(subfam = pir_info$clade[match(Geneid, pir_info$Geneid)]) %>% 
-  arrange(subfam, Geneid) %>% 
-  filter(padj < 0.05)
+  arrange(subfam, Geneid)
+
+sig_pirs <- filter(deseq_stats, padj < 0.05)
 sig_pirs_order <- unique(sig_pirs$Geneid)
 sig_pirs_cast <- dcast(sig_pirs,
                        comp ~ Geneid,
@@ -168,8 +170,8 @@ sig_pirs_cast <- sig_pirs_cast[ordering(rownames(sig_pirs_cast),
                                           'Gam.Male_Liv.Meroz')),
                                sig_pirs_order] 
 
-sig_pirs %>% filter(Geneid %in% 'PBANKA_0317181')
-sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031')
+sig_pirs %>% filter(Geneid %in% 'PBANKA_0317181', grepl(comp, pattern = 'Male'))
+sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031', grepl(comp, pattern = 'Meroz'))
 ```
 
 ```{r heatmap}
@@ -236,13 +238,10 @@ dev.off()
 ```
 
 ```{r save_stats_df}
-deseq_stats <- bind_rows(shrunk.list) %>% 
-  mutate(subfam = pir_info$clade[match(Geneid, pir_info$Geneid)]) %>% 
-  arrange(subfam, Geneid)
-
 write_xlsx(deseq_stats, 
            'SupplementaryInformation4_Stats_DESEQ_berghei.xlsx')
 write.csv(deseq_stats, 
            'SupplementaryInformation4_Stats_DESEQ_berghei.csv')
-
+deseq_stats <- read.csv('SupplementaryInformation4_Stats_DESEQ_berghei.csv',
+                        row.names = 1)
 ```
