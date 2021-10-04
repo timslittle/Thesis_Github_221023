@@ -45,6 +45,8 @@ library('RColorBrewer')
 library('DESeq2')
 library('apeglm')
 library('ashr')
+library('ComplexHeatmap')
+library('gridtext') #For heatmap labels
 ```
 
 ```{r sourcing_functions}
@@ -145,14 +147,14 @@ shrunk.list <- lapply(comparisons,
                           as.data.frame %>% 
                           rownames_to_column(var = 'Geneid') %>% 
                           mutate(comp = paste0(comparison[1],'_',comparison[2])) %>% 
-                          filter(Geneid %in% pir_id,
+                          filter(Geneid %in% pir_geneset$pirs,
                                  !is.na(padj))
                         return(shrunk)
                       })
 names(shrunk.list) <- unlist(lapply(comparisons, 
                                     function(comparison) paste0(comparison[1],'_',comparison[2])))
 sig_pirs <- bind_rows(shrunk.list) %>% 
-  mutate(subfam = pir_clade$clade[match(Geneid, pir_clade$Geneid)]) %>% 
+  mutate(subfam = pir_info$clade[match(Geneid, pir_info$Geneid)]) %>% 
   arrange(subfam, Geneid) %>% 
   filter(padj < 0.05)
 sig_pirs_order <- unique(sig_pirs$Geneid)
@@ -173,11 +175,41 @@ sig_pirs %>% filter(Geneid %in% 'PBANKA_0600031')
 ```{r heatmap}
 #Add a new-line to the S6 label so that it doesn't overlap with others
 pir_column_split <- gsub(
-  gsub(pir_clade$clade[match(colnames(sig_pirs_cast), pir_clade$Geneid)],
+  gsub(pir_info$clade[match(colnames(sig_pirs_cast), pir_info$Geneid)],
        pattern = 'ancestral',
        replacement = 'a'),
   pattern = '(S6|L2)',
   replacement = '\\1\n'
+)
+
+#Make nice colour labels
+row_labels <- gt_render(
+  unlist(
+    lapply(rownames(sig_pirs_cast), 
+           function(comparison) {
+             comp_sep <- unlist(
+               strsplit(comparison, 
+                        split = '_')
+             )
+             txt.colour <- sapply(comp_sep,
+                                  function(stage_name){
+                                    case_when(
+                                      grepl(stage_name, pattern = 'Asex') ~ 'coral1' ,
+                                      grepl(stage_name, pattern = 'Liv') ~ '#BD65B7',
+                                      grepl(stage_name, pattern = 'Gam') ~ '#6998F4',
+                                      grepl(stage_name, pattern  = 'Bld|Sporo|Ook') ~ '#629C57')
+                                  })
+             paste0("<span style='color:",
+                    txt.colour[1],
+                    "'>**",
+                    comp_sep[1],
+                    "** </span><span style='color:",
+                    txt.colour[2],
+                    "'>**",
+                    comp_sep[2],
+                    "**</span>")
+           })
+  )
 )
 
 png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_inidvidualGenes.png",
@@ -189,6 +221,7 @@ Heatmap(sig_pirs_cast,
         name = 'logFoldChange',
         cluster_rows = FALSE,
         cluster_columns = FALSE,
+        row_labels = row_labels,
         # rect_gp = gpar(col = "white", lwd = 1),
         border_gp = gpar(col = "black", lty = 1),
         column_title_gp = gpar(fontsize = 12),
@@ -204,7 +237,7 @@ dev.off()
 
 ```{r save_stats_df}
 deseq_stats <- bind_rows(shrunk.list) %>% 
-  mutate(subfam = pir_clade$clade[match(Geneid, pir_clade$Geneid)]) %>% 
+  mutate(subfam = pir_info$clade[match(Geneid, pir_info$Geneid)]) %>% 
   arrange(subfam, Geneid)
 
 write_xlsx(deseq_stats, 

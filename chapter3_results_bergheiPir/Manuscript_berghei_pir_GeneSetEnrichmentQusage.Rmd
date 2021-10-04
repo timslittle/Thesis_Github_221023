@@ -193,6 +193,36 @@ all_stats_df_cast <- all_stats_df_cast[ordering(rownames(all_stats_df_cast),
                                                 order(match(colnames(all_stats_df_cast), 
                                                             order_path.names))]
 
+#Make nice colour labels
+row_labels <- gt_render(
+  unlist(
+    lapply(rownames(all_stats_df_cast), 
+           function(comparison) {
+             comp_sep <- unlist(
+               strsplit(comparison, 
+                        split = '-')
+             )
+             txt.colour <- sapply(comp_sep,
+                                  function(stage_name){
+                                    case_when(
+                                      grepl(stage_name, pattern = 'Asex') ~ 'coral1' ,
+                                      grepl(stage_name, pattern = 'Liv') ~ '#BD65B7',
+                                      grepl(stage_name, pattern = 'Gam') ~ '#6998F4',
+                                      grepl(stage_name, pattern  = 'Bld|Sporo|Ook') ~ '#629C57')
+                                  })
+             paste0("<span style='color:",
+                    txt.colour[1],
+                    "'>**",
+                    comp_sep[1],
+                    "** </span><span style='color:",
+                    txt.colour[2],
+                    "'>**",
+                    comp_sep[2],
+                    "**</span>")
+           })
+  )
+)
+
 png(filename = "plots/thesis_chapter3_figure_statsCompHeatmap_geneGroups.png",
     width = 7,
     height = 5,
@@ -202,6 +232,7 @@ Heatmap(all_stats_df_cast,
         name = 'logFoldChange',
         cluster_rows = FALSE,
         cluster_columns = FALSE,
+        row_labels = row_labels,
         rect_gp = gpar(col = "white", lwd = 2),
         cell_fun = function(j, i, x, y, width, height, fill){
           stat_df <- all_stats_df[all_stats_df$contrast == rownames(all_stats_df_cast)[i],]
@@ -228,6 +259,8 @@ write_xlsx(all_stats_df,
            path = 'SupplementaryInformation_Stats_Qusage_berghei.xlsx')
 write.csv(all_stats_df,
           'SupplementaryInformation_Stats_Qusage_berghei.csv')
+# all_stats_df <- read.csv('SupplementaryInformation_Stats_Qusage_berghei.csv',
+#                          row.names = 1)
 ```
 
 
