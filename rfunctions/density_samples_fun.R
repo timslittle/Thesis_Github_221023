@@ -2,12 +2,12 @@ density_samples <- function(input,
                             save = FALSE,
                             line_val = 1){
   #Get some colours for the lines
-  colours = rep_len(cbPalette, length.out = length(colnames(input$tpm)[-1]))
-  list_dens = lapply(colnames(input$tpm)[-1], function(sample){
-    data = as.numeric(unlist(select(input$tpm, paste(sample))))
+  colours = rep_len(cbPalette, length.out = length(colnames(input)[-1]))
+  list_dens = lapply(colnames(input)[-1], function(sample){
+    data = as.numeric(unlist(select(input, paste(sample))))
     dens = density(log1p(data), bw = bw_mean)
     #Use the index of the column to get the colour
-    colouring = colours[grep(colnames(input$tpm)[-1], pattern = paste(sample))]
+    colouring = colours[grep(colnames(input)[-1], pattern = paste(sample))]
     list_return = list(dens, colouring)
     names(list_return) = c('dens','colouring')
     list_return
@@ -43,7 +43,7 @@ density_samples <- function(input,
     }
     legend(max_x-4, 
            max_dens, 
-           legend = paste(colnames(input$tpm)[-1]), 
+           legend = paste(colnames(input)[-1]), 
            col = colours,
            lty = c(rep(1, times = 9), 
                    rep(2, times = 9), 
