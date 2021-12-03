@@ -97,12 +97,14 @@ pir_id <- pir_info$Geneid
 ```{r read_tpm}
 berghei_tpm <- read.csv('berghei_tpm.csv', 
                         row.names = 1)
-expt_tpms <- lapply(paste0('E0', seq(1,10)),
+expt_tpms <- lapply(na.omit(unique(str_extract(colnames(berghei_tpm), pattern = 'E[[:digit:]]{2}'))),
                     function(Enum){
                       df <- berghei_tpm[,str_subset(colnames(berghei_tpm), 
                                               pattern = paste0('Geneid|',Enum))]
+                      list(experiment = Enum,
+                           tpm = df)
                     })
-names(expt_tpms) <- paste0('E0', seq(1,10))
+names(expt_tpms) <- na.omit(unique(str_extract(colnames(berghei_tpm), pattern = 'E[[:digit:]]{2}')))
 ```
 
 ## Density plots
@@ -110,9 +112,9 @@ names(expt_tpms) <- paste0('E0', seq(1,10))
 ```{r bandwidth}
 # Compute the average bandwidth for all the samples so that we have the same value for each figure.
 list_bw = lapply(expt_tpms, function(expt){ 
-  lapply(colnames(expt)[-1], 
+  lapply(colnames(expt$tpm)[-1], 
          function(sample){
-           data = as.numeric(unlist(select(expt, 
+           data = as.numeric(unlist(select(expt$tpm, 
                                            paste(sample))))
            dens = density(log1p(data))
            dens$bw
