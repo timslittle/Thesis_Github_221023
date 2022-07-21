@@ -1,0 +1,205 @@
+---
+title: "tl19-07_chabaudi24h_pir_GeneSetEnrichment"
+author: "Timothy Little"
+date: "21/01/2021"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = TRUE, message = FALSE, warning = FALSE)
+
+# Set the working directory for the document where the data is located.
+knitr::opts_knit$set(root.dir = 
+                       "/Users/littlet/Dropbox (The Francis Crick)/Data/tl19-07_audreybrugat_24h_chabaudi")
+# Change options so that numbers are displayed with all the zeros (e,g, as 1000000 not 1e6)
+options(scipen = 999) 
+```
+
+```{r load_packages}
+library('dplyr')
+library('readr')
+library('readxl')
+library('data.table')
+library('tibble')
+library('qusage')
+library('ggplot2')
+library('stringr')
+library('RColorBrewer')
+```
+
+```{r read_count_data}
+# chab_counts <- read_xlsx('Manuscript_Frontiers_chabaudi_24h_counts.xlsx') %>% 
+#   filter(!Geneid %in% 'PCHAS_0420800') #Removing the meddlesome pseudogene
+
+chab_tpm <- read_xlsx('Manuscript_Frontiers_SuppInfo_chabaudi_24h.xlsx',
+          sheet = 'chab_TPM_bioreps')
+
+# chab_tpm %>% filter(Geneid %in% 'PCHAS_0420800') 
+
+#Filter low expressed genes (greater than 10 tpm in at least one sample), convert to a matrix, add 1 for the log transformation, then transform to log2
+chab_tpm <- column_to_rownames(chab_tpm, var = 'Geneid')
+
+chab_tpm <- chab_tpm[apply(chab_tpm, 1, function(x) {any(x >= 10)}),]
+
+chab_tpm_log2plus1.mat <- chab_tpm %>% 
+  as.matrix %>% 
+  `+`(.+1) %>% 
+  log(base = 2)
+
+chab_tpm_log2plus1.mat[1:5,1:5]
+```
+
+```{r generate_labels}
+#Use make.names to remove the '-' from the labels
+colnames(chab_tpm_log2plus1.mat) <- make.names(colnames(chab_tpm_log2plus1.mat))
+
+labels <- colnames(chab_tpm_log2plus1.mat)
+
+#We want the life cycle stages to be the different groups for now.
+
+lifeCycle_labels <- str_extract(labels, 
+                                pattern = '[[:digit:]]{2}h')
+unique(lifeCycle_labels) %>% sort
+
+transmission_labels <- str_extract(labels, 
+                                pattern = 'rMT|SBP')
+unique(transmission_labels) %>% sort
+
+```
+
+```{r generate_genesets}
+
+pir_info <- read_xlsx('Manuscript_Frontiers_SuppInfo_chabaudi_24h.xlsx',
+                      sheet = 1)
+
+pir_geneset <- list(pirs = pir_info$Geneid)
+
+chrom_list <- lapply(unique(pir_info$chrom), 
+                     function(chrom_nam) filter(pir_info, 
+                                                chrom == chrom_nam)$Geneid)
+
+names(chrom_list) <- unique(pir_info$chrom)
+
+#Remove groups with only three members or fewer.
+chrom_list <- chrom_list[unlist(lapply(chrom_list, function(x) length(x) > 3))]
+
+subfam_list <- lapply(unique(pir_info$subfam), 
+                     function(clade_nam) filter(pir_info, 
+                                                subfam == clade_nam)$Geneid)
+names(subfam_list) <- unique(pir_info$subfam)
+subfam_list <- subfam_list[unlist(lapply(subfam_list, function(x) length(x) > 3))]
+
+ShortLong_list <- 
+  lapply(unique(pir_info$SorL), 
+                     function(SorL_nam) filter(pir_info, 
+                                                SorL == SorL_nam)$Geneid)
+names(ShortLong_list) <- unique(pir_info$SorL)
+ShortLong_list <- ShortLong_list[unlist(lapply(ShortLong_list, function(x) length(x) > 3))]
+
+```
+
+```{r running_qusage_pirs}
+#For each life cycle stage:
+qs.results.list <- lapply(
+  unique(transmission_labels), 
+  function(transmission){
+    
+    index_trans <- str_detect(colnames(chab_tpm_log2plus1.mat), 
+                              pattern = transmission)
+    
+    #Perform qusage
+    qs.results <- qusage(chab_tpm_log2plus1.mat[,index_trans],
+                         lifeCycle_labels[index_trans],
+                         '14h-02h',
+                         pir_geneset,
+                         n.points = 2^18)
+  }
+)
+
+names(qs.results.list) <- unique(transmission_labels)
+    
+qsTable(qs.results.list$SBP)
+qsTable(qs.results.list$rMT)
+```
+
+```{r}
+ qs.results.trans.chrom <- qusage(chab_tpm_log2plus1.mat,
+                              transmission_labels,
+                              'rMT-SBP',
+                              chrom_list,
+                              n.points = 2^18)
+```
+
+```{r}
+qsTable(qs.results.trans.chrom)
+```
+
+```{r}
+ qs.results.trans.pirs <- qusage(chab_tpm_log2plus1.mat,
+                              transmission_labels,
+                              'rMT-SBP',
+                              pir_geneset,
+                              n.points = 2^18)
+```
+
+```{r}
+qsTable(qs.results.trans.pirs)
+```
+
+WTF
+
+```{r}
+
+index_14h <- str_detect(colnames(chab_tpm_log2plus1.mat), pattern = '14h')
+
+qs.results.trans.pirs.14h <- qusage(chab_tpm_log2plus1.mat[,index_14h],
+                                transmission_labels[index_14h],
+                                'rMT-SBP',
+                                pir_geneset,
+                                n.points = 2^18)
+
+qsTable(qs.results.trans.pirs.14h)
+
+plotGeneSetDistributions(qs.results.trans.pirs.14h)
+```
+
+```{r qusage_pirs-expressed-higher-RMT}
+
+rmt_14h_hi <- read_xlsx('Manuscript_Frontiers_SuppInfo_chabaudi_24h.xlsx',
+                      sheet = 'chab_TPM_bioreps') %>% 
+  filter(Geneid %in% cir_id) %>%
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(
+    stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+    transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+    diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+    time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+    subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)]
+  ) %>% 
+  filter(time == '14h') %>% 
+  group_by(transmission, time, Geneid) %>% 
+  summarise(tpm_mean = mean(tpm)) %>% 
+  dcast(Geneid ~ transmission, 
+        margins = c('tpm_mean')) %>% 
+  filter((rMT - SBP) > 150) %>% 
+  .$Geneid
+
+qs.results.trans.pirs.14h.rmthi <- qusage(chab_tpm_log2plus1.mat,
+                                          transmission_labels,
+                                          'rMT-SBP',
+                                          list(rmt_hi = rmt_14h_hi),
+                                          n.points = 2^18)
+
+qsTable(qs.results.trans.pirs.14h.rmthi)
+
+
+```
+

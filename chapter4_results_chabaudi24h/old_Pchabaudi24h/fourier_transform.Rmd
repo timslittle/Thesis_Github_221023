@@ -1,0 +1,194 @@
+---
+title: "fourier_transform_inR"
+author: "Timothy Little"
+date: "03/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Using fft to compute the fourier transform
+
+Let's start with a simple sine wave.
+
+```{r}
+#Vector of a sine curve
+sine_curve_simpl <- sin(
+  seq(0, 
+      2*pi, 
+      0.01)
+)
+num_values_simpl <- length(sine_curve)
+plot(sine_curve_simpl)
+```
+
+Now here is a more complicated wave.
+
+```{r}
+sine_curve_compl <- sin(
+  seq(0, 
+      2*pi, 
+      0.01)
+) + sin(
+  7*seq(0, 
+      2*pi, 
+      0.01)
+  )
+num_values_compl <- length(sine_curve)
+plot(sine_curve_compl)
+```
+Even this more complicated curve can be produced from a combination of sine waves. This is the case for any linear, regular wave. The fourier transform can look at a signal (e.g. the values that define the waveform, such as sine_curve_compl) and derive the sine wave components.
+
+```{r}
+sine_curve_compl_fourier <- fft(sine_curve_compl)
+data.frame( 
+  harmonic = 0:9,
+  fourier_transform = head(
+    round(sine_curve_compl_fourier, digits = 2),
+    n = 10)
+)
+```
+
+The output of the fourier transform is a series of complex numbers, each of which represents a sine wave function. Each one sequentially represents different harmonics, the first value is the 0th harmonic or the sine wave with 0Hz frequency. Next harmonic has 1Hz frequency etc. The 0Hz value doesn't have a periodicity, it's like a constant value added to the sine wave. The sine_curve_compl has tiny values for everything except the 1st and 7th harmonic. This is because, as you can see from the equation we used to generate the values for the curve, it is constructed from a 1Hz sine wave (i.e. a normal sine wave from 0 to 2pi, y = sin(x) ) and a 7Hz sine wave ( y = sin(7x) ).
+
+The inverse fourier transform can get back the values of the curve from the fourier output. We need to normalise it by the length of the initial vector.
+
+```{r}
+sine_curve_compl_ifft <- fft(sine_curve_compl_fourier, 
+                             inverse = TRUE)
+#These still have a complex element so we should remove that so plot doesn't mess up and plot Real v Imaginary.
+sine_curve_compl_ifft <- Re(sine_curve_compl_ifft)
+plot(sine_curve_compl_ifft)
+sine_curve_compl_ifft_norm <- sine_curve_compl_ifft/num_values_compl
+plot(sine_curve_compl_ifft_norm)
+```
+
+The non-normalised plot has the same shape but the actual values are much larger.
+
+# Spectral analysis.
+
+Using an example from [this website](https://ms.mcmaster.ca/~bolker/eeid/2010/Ecology/Spectral.pdf) here.
+
+```{r}
+del<-0.1 # sampling interval
+t <- seq(0,
+         200,
+         by=del)
+x <- 2 + cos(2*pi*t/3) + 2*sin(2*pi*t/5)
+plot(x, 
+     type = 'l')
+```
+
+To create a 'periodogram' of this data we can use the function *spectrum()*.
+
+This is like a graph of the strength of each harmonic with a line connected to each point. The strength of a harmonic is the modulus of the complex number that the fourier transform uses to define the sine wave.
+
+```{r}
+spectrum(x)
+```
+
+All the little blips don't mean much, so normally you smooth this by using the 'span' argument.
+
+```{r}
+spectrum(x, span = 10)
+```
+
+We can draw a more intuitive plot by turning off the log axis
+
+```{r}
+x.spec <- spectrum(x,
+                   log="no",
+                   span=10,
+                   plot=FALSE)
+spx <- x.spec$freq/del # Divide frequency by the sampling interval time - gets cycles per unit time.
+spy <- 2*x.spec$spec # Multiply by 2 so that the area under curve equals variance
+plot(spy~spx,
+     xlab="frequency",
+     ylab="spectral density",
+     type="l",
+     xlim = c(0,1))
+```
+
+Compute the phase shift of the harmonics.
+
+```{r}
+plot(x,
+     type = 'l')
+x.fft <- fft(x)/length(x)
+row_num <- 150
+data.frame(
+  harmonic =seq(0,
+                row_num - 1,
+                1),
+  fourier = x.fft[0:row_num],
+  # real = Re(x.fft[0:row_num]),
+  # imag = Im(x.fft[0:row_num]),
+  amp = Mod(x.fft[0:row_num]),
+  phase_times_pi = atan2(Im(x.fft[0:row_num]),
+                       Re(x.fft[0:row_num]))/pi
+) %>% 
+  round(digits = 2) %>% 
+  arrange(desc(amp))
+```
+
+```{r}
+phase <- cos(0.5*t*pi + pi/2)
+
+plot(phase,
+     type = 'l')
+
+spectrum(phase)
+
+phase.spec <- spectrum(phase,
+                   log="no",
+                   span=10,
+                   plot=FALSE)
+spx<- phase.spec$freq/del # Divide frequency by the sampling interval time - gets cycles per unit time.
+spy <- 2*phase.spec$spec # Multiply by 2 so that the area under curve equals variance
+plot(spy~spx,
+     xlab="frequency",
+     ylab="spectral density",
+     type="l",
+     xlim = c(0,2))
+
+phase.fft <- fft(phase)/length(phase)
+row_num <- 1000
+data.frame(
+  harmonic =seq(0,
+                row_num - 1,
+                1),
+  fourier = phase.fft[0:row_num],
+  # real = Re(phase.fft[0:row_num]),
+  # imag = Im(phase.fft[0:row_num]),
+  amp = Mod(phase.fft[0:row_num]),
+  phase_times_pi = atan2(Im(phase.fft[0:row_num]),
+                         Re(phase.fft[0:row_num]))/pi
+) %>% 
+  round(digits = 5) %>% 
+  arrange(desc(amp))
+```
+
+
+```{r}
+t <- seq(0,200,by=0.1)
+curve_vec <- sin(2*pi*t/16) + 0.4*sin(2*pi*t/5) + 1.5*sin(3*pi*t/10)
+plot(curve_vec, type = 'l')
+spectrum(curve_vec)
+```
+
+
+```{r}
+plot.frequency.spectrum <- function(X.k, xlimits=c(0,length(X.k))) {
+  plot.data  <- cbind(0:(length(X.k)-1), Mod(X.k))
+  
+  # TODO: why this scaling is necessary?
+  plot.data[2:length(X.k),2] <- 2*plot.data[2:length(X.k),2] 
+  
+  plot(plot.data, t="h", lwd=2, main="", 
+       xlab="Frequency (Hz)", ylab="Strength", 
+       xlim=xlimits, ylim=c(0,max(Mod(plot.data[,2]))))
+}
+```
+

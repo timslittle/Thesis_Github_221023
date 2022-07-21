@@ -1,0 +1,282 @@
+---
+title: "tl19-07_chabaudi24h_PCA_3D_rgl"
+author: "Timothy Little"
+date: "12/01/2021"
+output: 
+  html_document:
+    theme: cosmo
+    code_download: true
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+knitr::opts_knit$set(root.dir = 
+                       "/Users/littlet/Dropbox (The Francis Crick)/Data/tl19-07_audreybrugat24hchabaudi")
+#Note that the above doesn't give an error if the dir doesn't exist
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r}
+library('rgl')
+library('magick')
+library('dplyr')
+library('readxl')
+library('tibble')
+library('factoextra')
+library('stringr')
+library('viridis')
+```
+
+```{r}
+rmt <- read_xlsx('tl19-07_TPM_rMT_nopseudoRescaled_labelsStage_allSamples.xlsx') %>% 
+  select(!matches('sch')) %>% 
+  rename_with(~ paste0('rMT_',
+                       .x),
+              matches('[[:digit:]]{2}h'))
+sbp <- read_xlsx('tl19-07_TPM_SBP_nopseudoRescaled_labelsStage_allSamples.xlsx') %>% 
+  select(!matches('sch')) %>% 
+  rename_with(~ paste0('SBP_',
+                       .x),
+              matches('[[:digit:]]{2}h'))
+tpm_data <- merge(rmt, 
+                  sbp) %>% 
+  column_to_rownames(var = 'Geneid')
+tpm_data <- tpm_data[,sort(colnames(tpm_data))]
+
+# apply(tpm_data, 2, function(x) 1e10*(sum(x) - 1e6))
+```
+
+
+# 3D PCA to save
+
+```{r 3d_PCA_save_rgl}
+
+twentyfour_TPM_pca <- prcomp(tpm_data,
+                             center = TRUE, 
+                             scale. = TRUE)
+
+twentyfour_TPM_pca_var <- get_pca_var(twentyfour_TPM_pca)
+twentyfour_TPM_pca_coords <- data.frame(twentyfour_TPM_pca_var$coord)
+
+pca_importance <- as.data.frame(summary(twentyfour_TPM_pca)$importance)
+pc1_importance <- round(pca_importance$PC1[2]*100, digits = 1)
+pc2_importance <- round(pca_importance$PC2[2]*100, digits = 1)
+pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
+
+twentyfour_TPM_pca_coords <- data.frame(
+  sample = rownames(twentyfour_TPM_pca_var$coord),
+  PC1 = twentyfour_TPM_pca_coords$Dim.1, 
+  PC3 = twentyfour_TPM_pca_coords$Dim.3, 
+  PC2 = twentyfour_TPM_pca_coords$Dim.2
+) %>% 
+  dplyr::mutate(stage = gsub(sample,
+                             pattern = "_[[:digit:]]$", 
+                             replacement = "")) %>% 
+  dplyr::mutate(time = str_extract(sample, 
+                                   pattern = '[[:digit:]]{2}h')) %>% 
+  dplyr::mutate(transmission = str_split_fixed(sample, 
+                                               pattern = "_", 
+                                               n = 3)[, 1])
+
+colornames <- viridis(length(unique(twentyfour_TPM_pca_coords$time)))
+colornames <- setNames(colornames, sort(unique(twentyfour_TPM_pca_coords$time)))
+
+twentyfour_TPM_pca_coords$cols <- colornames[
+  match(twentyfour_TPM_pca_coords$time,
+        names(colornames))
+]
+
+twentyfour_TPM_pca_coords_rmt <- filter(twentyfour_TPM_pca_coords, 
+                                        transmission == 'rMT')
+twentyfour_TPM_pca_coords_sbp <-  filter(twentyfour_TPM_pca_coords, 
+                                        transmission == 'SBP')
+
+```
+
+```{r movie3d_with_loop}
+movie3d_loop <- function(f, duration, dev = cur3d(), ..., fps = 10, 
+                         movie = "movie", frames = movie, dir = tempdir(), 
+                         convert = NULL, clean = TRUE, verbose = TRUE,
+                         top = TRUE, type = "gif", startTime = 0){
+  olddir <- setwd(dir)
+  on.exit(setwd(olddir))
+  for (i in round(startTime * fps):(duration * fps)) {
+    time <- i/fps
+    if (cur3d() != dev) 
+      set3d(dev)
+    stopifnot(cur3d() != 0)
+    args <- f(time, ...)
+    subs <- args$subscene
+    if (is.null(subs)) 
+      subs <- currentSubscene3d(dev)
+    else args$subscene <- NULL
+    for (s in subs) par3d(args, subscene = s)
+    filename <- sprintf("%s%03d.png", frames, i)
+    if (verbose) {
+      cat(gettextf("Writing '%s'\r", filename))
+      flush.console()
+    }
+    rgl.snapshot(filename = filename, fmt = "png", top = top)
+  }
+  cat("\n")
+  if (.Platform$OS.type == "windows") 
+    system <- shell
+  if (is.null(convert) && requireNamespace("magick")) {
+    m <- NULL
+    for (i in round(startTime * fps):(duration * fps)) {
+      filename <- sprintf("%s%03d.png", frames, i)
+      frame <- magick::image_read(filename)
+      if (is.null(m)) 
+        m <- frame
+      else m <- c(m, frame)
+      if (clean) 
+        unlink(filename)
+    }
+    m <- magick::image_animate(m, fps = fps, loop = 0, dispose = "previous") 
+    #Only change is here; 'loop = 1' -> 'loop = 0'
+    magick::image_write(m, paste0(movie, ".", type))
+    return(invisible(m))
+  }
+  else if (is.null(convert)) {
+    warning("R package 'magick' is not installed; trying external package.")
+    convert <- TRUE
+  }
+  if (is.logical(convert) && convert) {
+    progname <- "magick"
+    version <- try(system2(progname, "--version", stdout = TRUE, 
+                           stderr = TRUE), silent = TRUE)
+    if (inherits(version, "try-error") || !length(grep("ImageMagick", 
+                                                       version))) {
+      progname <- "convert"
+      version <- try(system2(progname, "--version", stdout = TRUE, 
+                             stderr = TRUE), silent = TRUE)
+    }
+    if (inherits(version, "try-error") || !length(grep("ImageMagick", 
+                                                       version))) 
+      stop("'ImageMagick' not found")
+    filename <- paste0(movie, ".", type)
+    if (verbose) 
+      cat(gettextf("Will create: %s\n", file.path(dir, 
+                                                  filename)))
+    convert <- paste(progname, "-delay 1x%d %s*.png %s.%s")
+  }
+  if (is.character(convert)) {
+    convert <- sprintf(convert, fps, frames, movie, type, 
+                       duration, dir)
+    if (verbose) {
+      cat(gettextf("Executing: '%s'\n", convert))
+      flush.console()
+    }
+    system(convert)
+    if (clean) {
+      if (verbose) 
+        cat(gettext("Deleting frames\n"))
+      for (i in 0:(duration * fps)) {
+        filename <- sprintf("%s%03d.png", frames, i)
+        unlink(filename)
+      }
+    }
+  }
+  invisible(convert)
+}
+```
+
+```{r}
+r3dDefaults$windowRect <- c(100, 100, 750, 750)
+rgl.init()
+plot3d(
+  twentyfour_TPM_pca_coords_rmt$PC1,
+  twentyfour_TPM_pca_coords_rmt$PC2,
+  twentyfour_TPM_pca_coords_rmt$PC3,
+  col = twentyfour_TPM_pca_coords_rmt$cols,
+  type = "s", 
+  radius = .025,
+  alpha = 0.65,
+  xlab = '',
+  ylab = '',
+  zlab = ''
+)
+cubes <- shapelist3d(
+  cube3d(),
+  twentyfour_TPM_pca_coords_sbp$PC1,
+  twentyfour_TPM_pca_coords_sbp$PC2,
+  twentyfour_TPM_pca_coords_sbp$PC3,
+  size = 0.017,
+  alpha = 0.65,
+  # ambient = 'black',
+  emission = twentyfour_TPM_pca_coords_sbp$cols,
+  col = twentyfour_TPM_pca_coords_sbp$cols,
+  # shininess = 25,
+  # specular = 'black'
+  lit = TRUE
+)
+#Add outlines (copy pasted from 
+# https://stackoverflow.com/questions/39730889/rgl-drawing-a-cube-with-colored-faces-vertex-points-and-lines )
+for (i in 1:length(cubes)){
+  c3d <- cubes[[i]]
+  for (i in 1:6){
+    lines3d(t(c3d$vb)[c3d$ib[,i],])
+  }
+}
+# add titles
+title3d('', 
+        '', 
+        paste0('PC1 ', pc1_importance, '%'), 
+        paste0('PC2 ', pc2_importance, '%'), 
+        paste0('PC3 ', pc3_importance, '%'))
+
+empty_length <- floor(length(unique(twentyfour_TPM_pca_coords$time))/2)
+legend3d("topright",
+         legend = c(
+           unique(twentyfour_TPM_pca_coords$time),
+           rep_len('', 
+                   length.out = empty_length),
+           'RMT',
+           'SBP',
+           rep_len('', 
+                   length.out = empty_length)
+         ), 
+         pch = c(
+           rep_len(16, 
+                   length.out = empty_length*2),
+           rep_len(NA, 
+                   length.out = empty_length) ,
+           16,
+           15,
+           rep_len(NA, 
+                   length.out = empty_length)
+           ), 
+         col = c(
+           unique(twentyfour_TPM_pca_coords$cols),
+           rep_len(NA, 
+                   length.out = empty_length),
+           'blue',
+           'blue',
+           rep_len(NA, 
+                   length.out = empty_length)
+         ), 
+         cex=1, 
+         inset=c(0.02),
+         ncol = 2)
+aspect3d("iso")
+
+
+# spin3d rpm defaults at 5 rpm - so 60/5 = 12s carries one full rotation.
+movie3d_loop(spin3d(axis = c(0,0,1)),
+        duration = 12,
+        movie = 'tl19-07_pca3d_test',
+        type = 'gif',
+        dir = getwd())
+
+# pca3dplot <- scene3d()
+```
+
+This works alright at the moment, although the additional shape I add for the 'SBP' samples seems stretched, probably because of the different lengths of the xyz axes. "iso" setting in aspect3d fixes this, so it is indeed to do with that.

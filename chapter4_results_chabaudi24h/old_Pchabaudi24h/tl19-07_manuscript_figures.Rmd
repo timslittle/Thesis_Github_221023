@@ -1,0 +1,3133 @@
+---
+title: "tl19-07_manuscript_figures"
+author: "Timothy Little"
+date: "06/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+#for server
+# knitr::opts_knit$set(root.dir = '~/data/tl19-07_chabaudi_24h_audreyMTbrugatSBP')
+knitr::opts_knit$set(root.dir = 
+                       "/Users/littlet/Dropbox (The Francis Crick)/Data/tl19-07_audreybrugat24hchabaudi")
+#Note that the above doesn't give an error if the dir doesn't exist
+
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+
+# library('tidyverse')
+library('readr')
+library('dplyr')
+library('tidyr')
+library('ggplot2')
+library('DESeq2')
+library("pheatmap")
+library("RColorBrewer")
+library('data.table')
+library('gridExtra')
+# library('apeglm')
+# library('ashr')
+library('tibble')
+library('stringr')
+# library('cowplot')
+library('kableExtra')
+library('viridis')
+# library('VennDiagram')
+library('corrplot')
+library('reshape2')
+library('circlize') # for circular plots
+library('cluster')    # clustering algorithms
+library('factoextra') # clustering algorithms & visualization
+library('ggfortify') # so ggplot understands prcomp objects
+library('ape') # for phylogeny plotting
+library('dendextend') # for dendrogram plotting
+library('readxl') # for reading in Excel spreadsheets
+library('plotly')
+library('scales')
+library('processx') # for downloading the plotly plots
+library('cowplot')
+library('writexl')
+
+library('devtools')
+#These packages were installed using github
+library('ComplexHeatmap')
+library('ggbiplot')
+library('ggpattern')
+
+#Colour blind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+show_col(cbPalette)
+
+#Want the defaults for arrange, mutate and summarise to be from dplyr
+arrange <- dplyr::arrange
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+select <- dplyr::select
+```
+
+```{r function_mround}
+mround <- function(x,base){ 
+  base*ceiling(x/base) 
+} 
+```
+
+```{r function_my_max}
+my_max <- function(x) ifelse( !all(is.na(x)), max(x, na.rm=T), NA) #max robust to NAs
+```
+
+```{r function_ordering}
+ordering <- function(to_order, order_vector){
+  order = unlist(sapply(order_vector, 
+                        function(x){unique(str_subset(to_order, 
+                                                      pattern = paste(x)))}))
+  order_missing = unique(to_order[!to_order %in% order])
+  unique(c(order, order_missing), fromLast = TRUE)
+}
+
+order_vector <- c("Early.Rings",
+                  "Early.Mid.Rings",
+                  "Late.Mid.Rings",
+                  "Late.Rings",
+                  "Rings.Troph.conversion",
+                  "Early.Trophs",
+                  "Mid.Trophs",
+                  "Late.Trophs")
+```
+
+The _cir_ gene names were downloaded using a search of PlasmoDB _P. chabaudi_ genome.
+
+```{r cir_id, message=FALSE, results='hide'}
+
+# Getting the cir gene names and transcript lengths needed for calculating the transcript-per-million
+
+chabaudi_gene_info = read.csv('chabaudi_PccAS_PlasmoDBv44_geneinformation_GenesByTaxon_Summary.csv',
+                              header = TRUE,
+                              stringsAsFactors = FALSE)
+#.txt file is weirdly truncated, don't use it
+
+chabaudi_transcript_lengths = select(chabaudi_gene_info, c(Gene.ID, Transcript.Length)) %>% 
+  arrange(Gene.ID)
+
+cir_info = chabaudi_gene_info %>% 
+  select(Gene.ID, Product.Description, Transcript.Length) %>% 
+  filter(Product.Description == 'PIR protein')
+nrow(cir_info)
+
+#Brugat 2017 cirs
+list.files()
+brugat_cir_names = read_xlsx('chabaudi_pir_cir_genes_brugat_2017_nmicrobiol2016276-s4.xlsx') %>% 
+  .$id
+length(brugat_cir_names)
+#Two extra genes compared to from PlasmoDB
+
+#Adam Reid Personal Comm 2019 cirs
+reid_cir_clade = read.table('AdamReid_chabaudi_PccAS_v3_aa.pir.clades.simple.txt',
+                            header = FALSE,
+                            stringsAsFactors = FALSE,
+                            sep = '\t',
+                            col.names = c('Geneid','clade'))
+reid_cir_names = reid_cir_clade$Geneid
+length(reid_cir_names)
+#An extra gene compared to Brugat
+
+brugat_cir_names[!brugat_cir_names %in% cir_info$Gene.ID] #Not annotated as cirs by PlasmoDB v Brugat
+cir_info$Gene.ID[!cir_info$Gene.ID %in% brugat_cir_names] #Not annotated as cirs by Brugat 2017? v PlasmoDB
+cir_info$Gene.ID[!cir_info$Gene.ID %in% reid_cir_names] #Not annotated as cirs by Reid v PlasmoDB
+reid_cir_names[!reid_cir_names %in% brugat_cir_names] #Not annotated as cirs by Brugat v Reid
+reid_cir_names[!reid_cir_names %in% cir_info$Gene.ID] #Not annotated as cirs by PlasmoDB v Reid
+
+#Adam Reid's list contains all the pirs we should assume, however I don't understand why it is missing the 'conserved rodent pir' - need to discuss this with him.
+#After extensive discussion it has been decided that due to dissimilarity and lack of an InterPro pir domain the
+# pan-rodent is not a pir gene
+
+reid_missing_cir = cir_info$Gene.ID[!cir_info$Gene.ID %in% reid_cir_names]
+
+#Add the missing cir to the list of cirs and their clades
+cir_clade_info <- reid_cir_clade %>% 
+  mutate(SorL = str_extract(clade, 
+                            pattern = '(L|S(?=[[:digit:]]))|ancestral|unk|pir-like'))
+write_delim(cir_clade_info,
+            '../standard_files/Pchabaudi_pir_clades.txt',
+            delim = '\t')
+
+cir_info <- chabaudi_gene_info %>% 
+  select(Gene.ID, 
+         Product.Description, 
+         Transcript.Length) %>% 
+  filter(Gene.ID %in% c(reid_cir_names)) %>% 
+  mutate(
+    Geneid = Gene.ID,
+    chrom = str_extract(Gene.ID, pattern = '(?<=PCHAS_)[[:digit:]]{2}'),
+    subfam = reid_cir_clade$clade[match(Geneid, reid_cir_clade$Geneid)]
+  ) %>% 
+  mutate(SorL = str_extract(subfam, pattern = 'L|S|ancestral|unk'))
+cir_transcript_lengths = select(cir_info, -Product.Description, -Gene.ID)
+
+cir_id <- cir_info$Gene.ID
+length(cir_id)
+
+cir_id_no_anc_or_rodcon <- cir_id[!cir_id %in% 'PCHAS_0101200'] 
+
+#How many cirs are present on each chromosome?
+
+cir_tbl = as_tibble(data.frame(Geneid = cir_id))
+cir_chrom_tbl <- cir_tbl %>% 
+  mutate(chrom = unlist(sapply(lapply(sapply(as.character(cir_tbl$Geneid), strsplit,
+                                             split = ''), '[', 7:8), 
+                               paste, collapse = ''))) 
+cir_chrom_tbl %>% 
+  group_by(chrom) %>% 
+  dplyr::summarise(number_of_cirs_in_each_chromosome = n(),
+                   percentage_of_all_cirs = round(n()/nrow(cir_tbl), 3)*100) %>% 
+  dplyr::arrange(desc(percentage_of_all_cirs))
+
+pir_clade <- reid_cir_clade %>% 
+  mutate(SorL = str_extract(clade, pattern = 'S|L|anc|unk'))
+
+#How many in each clade?
+cir_clade_tbl = reid_cir_clade %>% 
+  as_tibble() %>% 
+  group_by(clade) %>% 
+  dplyr::summarise(n())
+cir_clade_tbl
+
+chabaudi_gene_info <- dplyr::rename(chabaudi_gene_info, 
+                             Geneid = Gene.ID,
+                             Description = Product.Description)
+```
+
+```{r chapl_info}
+cir_loci <- read_xlsx('Brugat2017_pirexpressiondata_41564_2017_BFnmicrobiol2016276_MOESM25_ESM.xlsx',
+                            sheet = 1) %>% 
+  filter(id %in% cir_id)
+
+cir_chapl_aapl_info <- cir_loci %>%
+  mutate(
+    Geneid = id,
+    locus_type = `Locus type`,
+    chapl_aapl = ifelse(is.na(`Locus type`),
+                        NA,
+                        paste0(Subtelomere, 
+                               '_',
+                               `Locus type`)
+    )
+  ) %>% 
+  select(Geneid, locus_type, chapl_aapl)
+
+cir_info <- mutate(cir_info, 
+                   subtelomere = cir_loci$Subtelomere[match(Geneid, cir_loci$id)],
+                   chapl_aapl = cir_loci$`Locus type`[match(Geneid, cir_loci$id)],
+                   chapl_aapl_name = cir_chapl_aapl_info$chapl_aapl[match(Geneid, cir_chapl_aapl_info$Geneid)])
+
+```
+
+```{r writing_cir_info_file}
+
+write_delim(cir_info,
+            path = 'tl19-07_dataset_pirs_chabaudi_info.txt',
+            delim = '\t')
+
+```
+
+```{r times_stages_labels}
+#Use the rMT stage differential count in order to name the samples, but keep time to retain order
+times_stages_table <- data.frame(time = c('02h', '05h', '08h', '11h', '14h', '17h','20h','23h'),
+                                 stage_diff_count = c('Late-Rings',
+                                                      'Rings-Troph-conversion',
+                                                      'Early-Trophs',
+                                                      'Mid-Trophs',
+                                                      'Late-Trophs',
+                                                      'Early-Rings',
+                                                      'Early-Mid-Rings',
+                                                      'Late-Mid-Rings'))
+# R will convert the dashes to '.' at some point so let's have this notation here also
+times_stages_table$r_stage_diff_count <- str_replace_all(times_stages_table$stage_diff_count, 
+                                                         pattern = '-', 
+                                                         replacement = '\\.')
+```
+
+```{r read_tpm_rescaled_data}
+#Setting twentyfour_tpm_ct core dataset - removed pseudogene and re-scaled
+
+twentyfour_ct_comb <- list( tpm = read_xlsx('tl19-07_TPM_both_nopseudoRescaled_labelsStage_allSamples.xlsx') )
+
+twentyfour_ct_comb_noschz <- list( tpm = read_xlsx('tl19-07_TPM_both_nopseudoRescaled_labelsStage_allSamples.xlsx') %>% 
+                                    dplyr::select(!matches('sch'))  )
+
+twentyfour_avgtpm <- list(
+  'rMT' = list(
+    tpm = read_xlsx(
+                    'tl19-07_TPM_rMT_nopseudoRescaled_labelsStage_meanTPM.xlsx'),
+    experiment = 'rMT'
+  ),
+  'SBP' = list(
+    tpm = read_xlsx(
+                     'tl19-07_TPM_SBP_nopseudoRescaled_labelsStage_meanTPM.xlsx'),
+    experiment = 'SBP'
+  )
+)
+
+twentyfour_avgtpm_noschz <- lapply(twentyfour_avgtpm, 
+                                   function(experiment_data){
+                                     tpm_df <- experiment_data$tpm
+                                     tpm_df <- tpm_df[!str_detect(colnames(tpm_df), pattern = 'sch')]
+                                     # Remove the column with 'sch' pattern in it = schizonts
+                                     list(tpm = tpm_df,
+                                          experiment = experiment_data$experiment)
+                                   })
+
+```
+
+```{r colours_clades_phase}
+SorL_col <- setNames(
+  c(    '#F0E442',
+        '#56B4E9', #L
+        '#E69F00', #S
+        '#999999'),
+  sort(
+    unique(cir_clade_info$SorL)
+  )
+)
+
+SorL_col_num <- SorL_col
+names(SorL_col_num) <- sapply(names(SorL_col), 
+                              function(clade_name) {
+                                paste0(
+                                  clade_name, 
+                                  ' (n = ',
+                                  sum(pir_clade$SorL == clade_name),
+                                  ')'
+                                )
+                              })
+
+clade_col <- setNames(
+  c('#F0E442',
+    '#56B4E9', #L1
+    '#009E73',
+    '#0072B2',
+    '#E69F00', #S1
+    '#D55E00',
+    '#CC79A7',
+    '#999999'),
+  sort(
+    unique(cir_clade_info$clade)
+  )
+)
+
+clade_col_num <- clade_col
+names(clade_col_num) <- sapply(names(clade_col), 
+                               function(clade_name) {
+                                 paste0(
+                                   clade_name, 
+                                   ' (n = ',
+                                   sum(pir_clade$clade == clade_name),
+                                   ')'
+                                 )
+                               })
+
+#Be careful to ensure that the above is consistent with other images in the same paper.
+
+```
+
+# Figure  - Heatmap of top S and L gene expression.
+
+```{r figure_heatmap_table}
+
+#Get the TPM data for the pirs family being looked at
+highest_SorL_24h <- lapply(twentyfour_avgtpm_noschz, 
+                          function(tpm_input){
+                            
+                            tpm_data_SorL_stackgenes_top_table <- tpm_input$tpm %>% 
+                              filter(Geneid %in% cir_id) %>% 
+                              melt(id.vars = 'Geneid', 
+                                   variable.name = 'stage', 
+                                   value.name = 'total_tpm') %>% 
+                              mutate(total_tpm = as.numeric(total_tpm),
+                                     SorL = cir_clade_info$SorL[match(Geneid, cir_clade_info$Geneid)],
+                                     stage = times_stages_table$time[match(stage, times_stages_table$r_stage_diff_count)]) %>% 
+                              filter(str_detect(SorL, 
+                                                pattern = 'ancestral|unk', 
+                                                negate = TRUE)) %>% 
+                              group_by(stage) %>% 
+                              mutate(sum_tpm = sum(total_tpm)) %>% 
+                              group_by(stage, 
+                                       SorL) %>% 
+                              slice_max(order_by = total_tpm,
+                                        n = 1) %>% 
+                              mutate(total_tpm = round(total_tpm, digits = 2),
+                                     prop_tpm = round(total_tpm/sum_tpm, digits = 2)) %>% 
+                              select(stage, Geneid, SorL, total_tpm, prop_tpm)
+                            
+                            # write.csv(tpm_data_SorL_stackgenes_top_table,
+                            #           file = paste0('tl19-07_combined_SorL_topperstage_table_', 
+                            #                         tpm_input$experiment, 
+                            #                         '.csv'))
+                            
+                            # write_xlsx(tpm_data_SorL_stackgenes_top_table,
+                            #            paste0('tl19-07_combined_SorL_topperstage_table_', 
+                            #                   tpm_input$experiment, 
+                            #                   '.xlsx'))
+                            
+                            SorL_kable_index <- rep.int(2, 
+                                                        times = length(unique(tpm_data_SorL_stackgenes_top_table$stage)))
+                            names(SorL_kable_index) <- unique(tpm_data_SorL_stackgenes_top_table$stage)
+                            
+                            return(
+                              list(dataframe = tpm_data_SorL_stackgenes_top_table, 
+                                   table = 
+                                     tpm_data_SorL_stackgenes_top_table %>% 
+                                     kable(caption = paste(tpm_input$experiment) )%>% 
+                                     kable_styling() %>% 
+                                     pack_rows(index = SorL_kable_index) %>% 
+                                     scroll_box(width = "100%", height = "500px"),
+                                   experiment = tpm_input$experiment
+                              )
+                            )
+                          }
+)
+
+lapply(highest_SorL_24h, function(expt) expt$table)
+
+```
+
+```{r figure_heatmap}
+
+heatmap_row_name_fonts <- 20
+heatmap_col_name_fonts <- 15
+heatmap_col_title_fonts <- 15 
+threshold <- 0
+
+highest_SorL_pirs_bystage <- sort(
+  unique(
+    unlist(
+      lapply(
+        highest_SorL_24h, function(expt) expt$dataframe$Geneid)
+    )))
+
+highest_SorL_pirs_bystage_subfams <- data.frame(
+  Geneid = str_replace(as.character(highest_SorL_pirs_bystage), 
+                                    pattern = 'PCHAS_', 
+                                    replacement = ''),
+                       subfamily = cir_clade_info$SorL[match(highest_SorL_pirs_bystage
+                                                             , cir_clade_info$Geneid)]
+  )
+
+
+ha = Heatmap(
+  as.matrix(highest_SorL_pirs_bystage_subfams$subfamily),
+  name = 'Subfamily',
+  na_col = 'white',
+  col = SorL_col,
+  cluster_rows = FALSE, 
+  cluster_columns = FALSE,
+  column_names_gp = gpar(col = 'darkslategray', 
+                         fontsize = 12, 
+                         fontface = 'italic'),
+  show_column_dend = FALSE,
+  rect_gp = gpar(col = 'white'), 
+  width = unit(1, "cm"),
+  heatmap_legend_param = list(
+    labels_gp = gpar(fontsize = 10),
+    title_gp = gpar(fontsize = 10)
+  ),
+  show_heatmap_legend = FALSE
+  # Going to hide the legend so I can make it manually later with the grid.points that I use in the heatmap body.
+)
+
+
+#Get the TPM data for the pirs family being looked at
+expt_tpms_top_pirs <- lapply(twentyfour_avgtpm_noschz, 
+                             function(tpm_input){
+                               # print(paste0('Now doing ', tpm_input$experiment))
+                               tpms <- tpm_input$tpm %>% 
+                                 filter(Geneid %in% highest_SorL_pirs_bystage) %>% 
+                                 as.data.frame
+                               
+                               
+                               colnames(tpms) <- ifelse(
+                                 !colnames(tpms) %in% 'Geneid',
+                                                        times_stages_table$time[match(colnames(tpms),
+                                                                                      times_stages_table$r_stage_diff_count)],
+                                                        'Geneid'
+                               )
+                               
+                               tpms <- tpms[,
+                                            order(colnames(tpms)),
+                                            drop = FALSE]
+                               #Ordering using the ordering function and order_vector defined in the functions section.
+                               
+                               #Data for the grid.dots for heatmap to show max for each stage
+                               max_SorL <- mutate(tpms, 
+                                                  SorL = cir_clade_info$SorL[match(Geneid, 
+                                                                                   cir_clade_info$Geneid)]) %>% 
+                                 group_by(SorL) %>% 
+                                 mutate(across(-matches('Geneid|SorL'), 
+                                               ~ ifelse(.x == max(.x), 
+                                                        SorL, 
+                                                        NA))) %>% 
+                                 ungroup() %>% 
+                                 select(-Geneid, -SorL)
+                               
+                               #Remove PCHAS_ from the gene names for simplicity
+                               rownames(tpms) <- str_replace(as.character(tpms$Geneid), 
+                                                             pattern = 'PCHAS_', 
+                                                             replacement = '')
+                               tpms <- tpms[str_sort(rownames(tpms), 
+                                                     numeric = TRUE),]
+                               tpms <- select(tpms, -Geneid)
+                               
+                               tpms <- apply(tpms, 2, function(x){ifelse(x >= threshold, 
+                                                                         x, 
+                                                                         NA)}) #Get NA for values under threshold
+                               tpms <- log2(1+tpms)
+                               if(tpm_input$experiment %>%  is.null){
+                                 tpm_input$experiment = ''
+                               }
+                               list = list(tpm = tpms, 
+                                           experiment = tpm_input$experiment,
+                                           max_SorL = max_SorL)
+                               return(list)
+                             })
+
+    maxcol <- max(
+      unlist(
+        lapply(
+          expt_tpms_top_pirs, 
+          function(x) max(
+            x$tpm,
+            na.rm = TRUE
+          )
+        )
+      )
+    )
+    #Get the max TPM value
+
+heatmaps = lapply(expt_tpms_top_pirs, 
+                  function(tpms){
+                    
+                    if(tpms$experiment != dplyr::last(expt_tpms_top_pirs)$experiment){
+                      #If it is the final element don't remove the row names
+                      rownames(tpms$tpm) = c()
+                    }
+                    #Setting the name if one is not provided
+                    title_name = tpms$experiment
+                    #Drawing each heatmap
+                    ht = Heatmap(tpms$tpm, 
+                                 name = 'log(TPM + 1)', 
+                                 col = colorRamp2(c(threshold, 
+                                                    maxcol/4, 
+                                                    maxcol/2, 
+                                                    3*maxcol/4, 
+                                                    maxcol), 
+                                                  viridis(5)),
+                                 cluster_rows = FALSE, 
+                                 cluster_columns = FALSE,
+                                 column_title = paste(title_name),
+                                 column_title_gp = gpar(fontsize = heatmap_col_title_fonts),
+                                 row_names_gp = gpar(fontsize = heatmap_row_name_fonts),
+                                 column_title_rot = 0,
+                                 column_names_rot = 0,
+                                 column_names_centered = TRUE,
+                                 column_names_gp = gpar(fontsize = heatmap_col_name_fonts),
+                                 na_col = 'white', 
+                                 border = TRUE,
+                                 heatmap_legend_param = list(
+                                   title = 'log(TPM + 1)', 
+                                   at = mround(
+                                     c(log2(1+threshold), 
+                                       seq(0, 
+                                           maxcol, 
+                                           length.out = 4)[-1]
+                                     ), 
+                                     base = 0.05),
+                                   labels_gp = gpar(fontsize = 10),
+                                   title_gp = gpar(fontsize = 10, fontface = "bold")
+                                 ),
+                                 cell_fun = function(j, i, x, y, width, height, fill) {
+                                   if(!is.na(as.matrix(tpms$max_SorL)[i, j])){
+                                     ifelse(
+                                       as.matrix(tpms$max_SorL)[i, j] == 'S',
+                                       grid.points(x, y, pch = 16, size = unit(3, "mm")),
+                                       grid.points(x, y, pch = 18, size = unit(4, "mm"))
+                                     )
+                                   }
+                                 }
+                    )
+                  })
+
+ldg_subfam <- Legend(labels = c('S', 'L'),
+                     type = 'points',
+                     pch = c(16,18),
+                     size = unit.c(unit(2, "mm"), 
+                                   unit(3, "mm")),
+                     background = SorL_col[c('S','L')],
+                     title = 'Subfamily',
+                     title_gp = gpar(fontsize = 10, fontface = "bold"))
+
+ht_list = Reduce('+', heatmaps) #To add the list elements together
+ht_list <- ha + ht_list
+# pdf('tl19-07_pir_SorLhighest_figure2c_heatmap.pdf'
+#     , width = 10
+#     , height = 4
+# )
+draw(ht_list,
+     row_title_side = 'left',
+     column_title = 'Malaria stage',
+     column_title_side = 'bottom',
+     column_title_gp = gpar(fontsize = 16),
+     heatmap_legend_side = 'left',
+     ht_gap = unit(0.5, "cm"),
+     heatmap_legend_list = list(ldg_subfam))
+# dev.off()
+```
+
+## Figure 4 - Expression of major expressed cirs rMT/SBP side-by-side.
+
+_pir_ genes selected by being expressed above 1 TPM in all samples.
+
+Adding in housekeeping genes for comparison:
+HSP70 putative  PCHAS_0721000
+MSP1 PCHAS_0831300
+AMA1 PCHAS_0931000
+
+
+```{r pirs_side-by-side_figure4}
+
+housekeeping_genes <- data.frame('HSP70' = 'PCHAS_0721000',
+                             'MSP1' = 'PCHAS_0831300',
+                             'AMA1' = 'PCHAS_0931000')
+
+cir_housekeeping_id <- c(cir_id, 
+                         'PCHAS_0721000',
+                         'PCHAS_0831300',
+                         'PCHAS_0931000')
+
+cir_plot <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_housekeeping_id) %>%
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(
+    stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+    transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+    diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+    time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+    subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)]
+  ) %>% 
+  mutate(subfam = ifelse(is.na(subfam), 'ref', subfam)) %>% 
+  filter(!(time %in% c('sch.culture', 
+                       'Unknown'))) %>% 
+  mutate(subfam = str_replace(subfam, 
+                              'ancestral',
+                              'a'))
+
+cir_plot$Geneid <- ifelse(
+  cir_plot$Geneid %in% housekeeping_genes[1,],
+  colnames(housekeeping_genes)[ match(cir_plot$Geneid, housekeeping_genes[1,]) ],
+  cir_plot$Geneid
+)
+
+limits_cir <- c(0, 
+                mround(max(cir_plot$tpm), 
+                       base = 100))
+
+cir_plot_order <- cir_plot %>% 
+  filter(time == '14h',
+         transmission == 'rMT') %>% 
+  arrange(desc(tpm))
+
+
+cir_plot <- mutate(cir_plot, 
+                   Geneid = factor(Geneid, 
+                                   levels = unique(cir_plot_order$Geneid)))
+
+side_by_side_cir_plot <- function(time_vec = '14h',
+                                  log_it = TRUE,
+                                  save = TRUE,
+                                  limits = limits_cir,
+                                  point_size = 1,
+                                  text_size = 10,
+                                  file_name_end = '',
+                                  threshold_min = 100,
+                                  threshold_max = Inf){
+  
+  cir_plot <- group_by(cir_plot, 
+                       Geneid) %>% 
+    filter(
+      time == time_vec,
+      !Geneid %in% cir_id | any(tpm >= threshold_min),
+      !Geneid %in% cir_id | all(tpm <= threshold_max)
+    )
+  
+  # cir_plot %>% group_by(Geneid) %>% summarise(n())
+  if(log_it){
+    cir_plot$tpm <- log2(1+cir_plot$tpm)
+      limits = log2(1+limits)
+      breaks <- round(seq.int(0, 
+                              max(limits), 
+                              length.out = round(max(limits)) + 1, 
+                              digits = 0), 
+                      digits = 0)
+    }else{
+      breaks <- seq.int(0, max(limits), length.out = 11)
+    }
+    
+    cir_plot$Geneid <- factor(
+      str_remove(cir_plot$Geneid, 
+                 pattern = 'PCHAS_'),
+      levels = str_remove(levels(cir_plot$Geneid), 
+                          pattern = 'PCHAS_')
+    )
+    
+    cir_plot$subfam <- factor(
+      cir_plot$subfam,
+      levels = c(
+        sort(unique(cir_plot$subfam)[!(unique(cir_plot$subfam) %in% 'ref')]),
+        'ref'
+      )
+    )
+    
+    y <- ggplot(
+      data = cir_plot,
+      mapping = aes(
+        x = Geneid,
+        fill = transmission,
+        y = tpm
+      )
+    ) +
+      stat_summary(fun.y = median, 
+                   fun.ymin = median, 
+                   fun.ymax = median,
+                   geom = "bar", 
+                   width = 0.75, 
+                   size = 0.25, 
+                   position = 'dodge') +
+      geom_point(stat = 'identity', 
+                 position = position_dodge(width = 0.75),
+                 size = point_size) +
+      scale_y_continuous(breaks = breaks,
+                         limits = limits) +
+      scale_fill_manual(values = c('skyblue','red')) +
+      facet_grid(.~subfam, 
+                 scales = "free_x",
+                 space = "free_x") +
+      theme_classic() +
+      theme(
+        axis.text.x = element_text(size = text_size,
+                                   angle = 90)
+      ) +
+      ylab('log(TPM + 1)')+
+      ggtitle(paste(unique(cir_plot$time)))
+    
+    #This bit is to change the colour, and text colour, of the facet boxes
+    
+    g <- ggplot_gtable(ggplot_build(y))
+    strip_t <- which(grepl('strip-t', g$layout$name))
+    subfam_vec <- sort(unique(cir_plot$subfam))
+    fills <- case_when(str_detect(subfam_vec, 
+                                  pattern = 'a') ~ clade_col['ancestral'],
+                       subfam_vec %in% names(clade_col) ~ clade_col[paste(subfam_vec)],
+                       str_detect(subfam_vec, 
+                                  pattern = 'ref') ~ 'white')
+    k <- 1
+    for (i in strip_t) {
+      j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+      g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+      # if(getGrob(g$grobs[[i]]$grobs[[1]], 'GRID', grep = TRUE)$label == 'a'){
+      #   #If grob is for the 'a' label we want to change the font
+      #   m <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+      #   n <- which(grepl('GRID.text', g$grobs[[i]]$grobs[[1]]$children[[m]]$childrenOrder))
+      #   g$grobs[[i]]$grobs[[1]]$children[[m]]$children[[n]]$gp$col <- 'white'
+      # }
+      k <- k+1
+    }
+    
+    if(save){
+      ggsave2(
+        paste0('tl20-05_side-by-side_barchart_facetbySubfam_',
+               time_vec,
+               file_name_end,
+               '.png'),
+        plot = g,
+        dpi = 300,
+        width = 28,
+        height = 8,
+        units = 'cm'
+      )
+    }
+    
+    grid.newpage()
+    grid.draw(g)
+    
+}
+
+ lapply(
+    sort(unique(cir_plot$time)),
+    side_by_side_cir_plot,
+    threshold_min = 50,
+    threshold_max = Inf,
+    point_size = 1,
+    text_size = 10,
+    file_name_end = '_Over100TPM',
+    save = TRUE
+  )
+```
+
+```{r}
+  lapply(
+    sort(unique(cir_plot$time)),
+    side_by_side_cir_plot,
+    threshold_min = 0,
+    threshold_max = 50,
+    point_size = 0.1,
+    text_size = 3,
+    file_name_end = '_Under50TPM',
+    save = TRUE
+  )
+#Note that the file name above may not be accurate - this is just so that I don't have to make the supp figure from scratch.
+```
+
+
+```{r pirs_side-by-side_figure4}
+
+housekeeping_genes <- data.frame('HSP70' = 'PCHAS_0721000',
+                             'MSP1' = 'PCHAS_0831300',
+                             'AMA1' = 'PCHAS_0931000')
+
+cir_housekeeping_id <- c(cir_id, 
+                         'PCHAS_0721000',
+                         'PCHAS_0831300',
+                         'PCHAS_0931000')
+
+cir_plot <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_housekeeping_id) %>%
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(
+    stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+    transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+    diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+    time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+    subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)]
+  ) %>% 
+  mutate(subfam = ifelse(is.na(subfam), 'ref', subfam)) %>% 
+  filter(!(time %in% c('sch.culture', 
+                       'Unknown'))) %>% 
+  mutate(subfam = str_replace(subfam, 
+                              'ancestral',
+                              'a')) %>% 
+  mutate(
+    subfam = interaction(
+      transmission,
+      forcats::fct_shift(
+        relevel(
+          as.factor(subfam),
+          ref = 'ref')
+      ),
+      sep = '_',
+      lex.order = TRUE
+    )
+  )
+#Need to add the transmission name to the subfam so that they are ordered correctly.
+# Need to move 'ref' factor to the start of the subfam, then shift the factor levels to the 'left' (so now
+# ref is at the end) ensuring that the 'ref' genes are at the end of the graph for each transmission type.
+
+cir_plot$Geneid <- ifelse(
+  cir_plot$Geneid %in% housekeeping_genes[1,],
+  colnames(housekeeping_genes)[ match(cir_plot$Geneid, housekeeping_genes[1,]) ],
+  cir_plot$Geneid
+)
+
+limits_cir <- c(0, 
+                mround(max(cir_plot$tpm), 
+                       base = 100))
+
+cir_plot_order <- cir_plot %>% 
+  filter(time == '14h',
+         transmission == 'rMT') %>% 
+  arrange(desc(tpm))
+
+
+cir_plot <- mutate(cir_plot, 
+                   Geneid = factor(Geneid, 
+                                   levels = unique(cir_plot_order$Geneid)))
+
+transmissionSplit_cir_plot <- function(time_vec = '14h',
+                                  log_it = TRUE,
+                                  save = TRUE,
+                                  limits = limits_cir,
+                                  point_size = 1,
+                                  text_size = 10,
+                                  file_name_end = '',
+                                  threshold_min = 100,
+                                  threshold_max = Inf){
+  
+  cir_plot <- group_by(cir_plot, 
+                       Geneid) %>% 
+    filter(
+      time == time_vec,
+      !Geneid %in% cir_id | any(tpm >= threshold_min),
+      !Geneid %in% cir_id | all(tpm <= threshold_max)
+    )
+  
+  # cir_plot %>% group_by(Geneid) %>% summarise(n())
+  if(log_it){
+    cir_plot$tpm <- log2(1+cir_plot$tpm)
+      limits = log2(1+limits)
+      breaks <- round(seq.int(0, 
+                              max(limits), 
+                              length.out = round(max(limits)) + 1, 
+                              digits = 0), 
+                      digits = 0)
+    }else{
+      breaks <- seq.int(0, max(limits), length.out = 11)
+    }
+    
+    cir_plot$Geneid <- factor(
+      str_remove(cir_plot$Geneid, 
+                 pattern = 'PCHAS_'),
+      levels = str_remove(levels(cir_plot$Geneid), 
+                          pattern = 'PCHAS_')
+    )
+
+    y <- ggplot(
+      data = cir_plot,
+      mapping = aes(
+        x = Geneid,
+        fill = transmission,
+        y = tpm
+      )
+    ) +
+      stat_summary(fun.y = median, 
+                   fun.ymin = median, 
+                   fun.ymax = median,
+                   geom = "bar", 
+                   width = 0.75, 
+                   size = 0.25, 
+                   position = 'dodge') +
+      geom_point(stat = 'identity', 
+                 position = position_dodge(width = 0.75),
+                 size = point_size) +
+      scale_y_continuous(breaks = breaks,
+                         limits = limits) +
+      scale_fill_manual(values = c('skyblue','red')) +
+      facet_grid(.~subfam, 
+                 scales = "free_x",
+                 space = "free_x",
+                 labeller = labeller(subfam = function(string) {
+                   str_remove_all(string, 
+                                  pattern = '(rMT|SBP)_')
+                 })) +
+      theme_classic() +
+      theme(
+        axis.text.x = element_text(size = text_size,
+                                   angle = 90,
+                                   # hjust = 2,
+                                   vjust = 0.5)
+      ) +
+      ylab('log(TPM + 1)')+
+      ggtitle(paste(unique(cir_plot$time)))
+    
+    #This bit is to change the colour, and text colour, of the facet boxes
+    
+    g <- ggplot_gtable(ggplot_build(y))
+    
+    # g$widths[5] = 2*g$widths[5]
+    
+    strip_t <- which(grepl('strip-t', g$layout$name))
+    subfam_vec <- sort(unique(cir_plot$subfam)) %>% str_remove_all(pattern = '(rMT|SBP)_')
+    fills <- case_when(str_detect(subfam_vec, 
+                                  pattern = 'a') ~ clade_col['ancestral'],
+                       subfam_vec %in% names(clade_col) ~ clade_col[paste(subfam_vec)],
+                       str_detect(subfam_vec, 
+                                  pattern = 'ref') ~ 'white')
+    k <- 1
+    for (i in strip_t) {
+      j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+      g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+      k <- k+1
+    }
+    
+    #subfam_vec also corresponds to which panel the different clades are, so for the small ones we can use this to
+    # manually make them a bit wider.
+    
+    short_panels <- which(str_detect(subfam_vec, pattern = 'a|ref'))
+    
+    for(i in short_panels){
+      num <- g$layout$l[grep(paste0('panel-1-', i, '$'), g$layout$name)]
+      g$widths[num] = 1.75*g$widths[num]
+      #1.75 times the width of the right panels.
+      # print(num)
+    }
+    
+    if(save){
+      ggsave2(
+        paste0('tl19-07_barchart_facetTrans_facetSubfam_',
+               time_vec,
+               file_name_end,
+               '.png'),
+        plot = g,
+        dpi = 300,
+        width = 28,
+        height = 8,
+        units = 'cm'
+      )
+    }
+    
+    grid.newpage()
+    grid.draw(g)
+    
+}
+
+# transmissionSplit_cir_plot(
+#   sort(unique(cir_plot$time))[1],
+#     threshold_min = 100,
+#     threshold_max = Inf,
+#     point_size = 1,
+#     text_size = 4,
+#     file_name_end = '_Over100TPM',
+#     save = FALSE)
+
+ lapply(
+    sort(unique(cir_plot$time)),
+    transmissionSplit_cir_plot,
+    threshold_min = 100,
+    threshold_max = Inf,
+    point_size = 1,
+    text_size = 5,
+    file_name_end = '_Over100TPM',
+    save = TRUE
+  )
+```
+
+```{r pirs_side-by-side_figure4_RMT-SBP-completelySeparate}
+
+cir_plot <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_housekeeping_id) %>%
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(
+    stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+    transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+    diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+    time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+    subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)]
+  ) %>% 
+  mutate(subfam = ifelse(is.na(subfam), 'ref', subfam)) %>% 
+  filter(!(time %in% c('sch.culture', 
+                       'Unknown'))) %>% 
+  mutate(subfam = str_replace(subfam, 
+                              'ancestral',
+                              'a')) %>% 
+  mutate(
+    subfam = interaction(
+      transmission,
+      forcats::fct_shift(
+        relevel(
+          as.factor(subfam),
+          ref = 'ref')
+      ),
+      sep = '_',
+      lex.order = TRUE
+    )
+  )
+#Need to add the transmission name to the subfam so that they are ordered correctly.
+# Need to move 'ref' factor to the start of the subfam, then shift the factor levels to the 'left' (so now
+# ref is at the end) ensuring that the 'ref' genes are at the end of the graph for each transmission type.
+
+cir_plot$Geneid <- ifelse(
+  cir_plot$Geneid %in% housekeeping_genes[1,],
+  colnames(housekeeping_genes)[ match(cir_plot$Geneid, housekeeping_genes[1,]) ],
+  cir_plot$Geneid
+)
+
+limits_cir <- c(0, 
+                mround(max(cir_plot$tpm), 
+                       base = 100))
+
+cir_plot_order <- cir_plot %>% 
+  filter(time == '14h',
+         transmission == 'rMT') %>% 
+  arrange(desc(tpm))
+
+
+cir_plot <- mutate(cir_plot, 
+                   Geneid = factor(Geneid, 
+                                   levels = unique(cir_plot_order$Geneid)))
+
+transmissionSep_cir_plot <- function(time_vec = '14h',
+                                     log_it = TRUE,
+                                     save = TRUE,
+                                     limits = limits_cir,
+                                     point_size = 1,
+                                     text_size = 10,
+                                     file_name_end = '',
+                                     threshold_min = 100,
+                                     threshold_max = Inf){
+  
+  cir_plot_filter <- group_by(cir_plot, 
+                       Geneid) %>% 
+    filter(
+      time == time_vec,
+      !Geneid %in% cir_id | any(tpm >= threshold_min),
+      !Geneid %in% cir_id | all(tpm <= threshold_max)
+    )
+  #Filter for pirs expressed above or below the thresholds, have the OR so that the ref genes aren't removed.
+  # e.g. Either 'Not a cir' OR 'Any TPM is above the minimum'.
+  
+  # cir_plot_filter %>% group_by(Geneid) %>% summarise(n())
+  if(log_it){
+    cir_plot_filter$tpm <- log2(1+cir_plot_filter$tpm)
+    limits = log2(1+limits)
+    breaks <- round(seq.int(0, 
+                            max(limits), 
+                            length.out = round(max(limits)) + 1, 
+                            digits = 0), 
+                    digits = 0)
+  }else{
+    breaks <- seq.int(0, max(limits), length.out = 11)
+  }
+  
+  cir_plot_filter$Geneid <- factor(
+    str_remove(cir_plot_filter$Geneid, 
+               pattern = 'PCHAS_'),
+    levels = str_remove(levels(cir_plot_filter$Geneid), 
+                        pattern = 'PCHAS_')
+  )
+  
+  lapply(unique(cir_plot_filter$transmission), 
+         function(transmission_method){
+           
+           cir_plot_filter <- filter(cir_plot_filter, 
+                              transmission %in% transmission_method)     
+           
+           y <- ggplot(
+             data = cir_plot_filter,
+             mapping = aes(
+               x = Geneid,
+               y = tpm
+             )
+           ) +
+             stat_summary(fun.y = median, 
+                          fun.ymin = median, 
+                          fun.ymax = median,
+                          geom = "bar",
+                          fill = 'lightblue',
+                          width = 0.75, 
+                          size = 0.25, 
+                          position = 'dodge') +
+             geom_point(stat = 'identity', 
+                        position = position_dodge(width = 0.75),
+                        size = point_size) +
+             scale_y_continuous(breaks = breaks,
+                                limits = limits) +
+             facet_grid(.~subfam, 
+                        scales = "free_x",
+                        space = "free_x",
+                        labeller = labeller(subfam = function(string) {
+                          str_remove_all(string, 
+                                         pattern = '(rMT|SBP)_')
+                        })) +
+             theme_classic() +
+             ylab('log(TPM + 1)')+
+             ggtitle(paste(unique(cir_plot_filter$time)))
+           
+           if(grepl(time_vec, pattern = '20|23')) {
+             y <- y + theme(
+               axis.text.x = element_text(size = text_size,
+                                          angle = 90,
+                                          vjust = 0.5)
+             )
+           } else {
+             y <- y + theme(
+               axis.text.x = element_blank(),
+               axis.ticks.x = element_blank()
+             ) 
+           }
+           
+           #This bit is to change the colour, and text colour, of the facet boxes
+           
+           g <- ggplot_gtable(ggplot_build(y))
+           
+           # g$widths[5] = 2*g$widths[5]
+           
+           strip_t <- which(grepl('strip-t', g$layout$name))
+           subfam_vec <- sort(unique(cir_plot_filter$subfam)) %>% str_remove_all(pattern = '(rMT|SBP)_')
+           fills <- case_when(str_detect(subfam_vec, 
+                                         pattern = 'a') ~ clade_col['ancestral'],
+                              subfam_vec %in% names(clade_col) ~ clade_col[paste(subfam_vec)],
+                              str_detect(subfam_vec, 
+                                         pattern = 'ref') ~ 'white')
+           k <- 1
+           for (i in strip_t) {
+             j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+             g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- fills[k]
+             k <- k+1
+           }
+           
+           #subfam_vec also corresponds to which panel the different clades are, so for the small ones we can use this to
+           # manually make them a bit wider.
+           
+           short_panels <- which(str_detect(subfam_vec, pattern = 'a|S1'))
+           
+           for(i in short_panels){
+             num <- g$layout$l[grep(paste0('panel-1-', i, '$'), g$layout$name)]
+             g$widths[num] = 1.75*g$widths[num]
+             #1.75 times the width of the right panels.
+             # print(num)
+           }
+           
+           if(save){
+             ggsave2(
+               paste0('tl19-07_barchart_',
+                      transmission_method,
+                      '_',
+                      'facetSubfam_',
+                      time_vec,
+                      file_name_end,
+                      '.png'),
+               plot = g,
+               dpi = 300,
+               width = 28,
+               height = 8,
+               units = 'cm'
+             )
+           }
+           
+           grid.newpage()
+           grid.draw(g)
+         })
+  
+}
+
+# transmissionSep_cir_plot(
+#   sort(unique(cir_plot$time))[1],
+#   threshold_min = 50,
+#   threshold_max = Inf,
+#   point_size = 1,
+#   text_size = 6,
+#   file_name_end = '_Over50TPM',
+#   save = FALSE)
+
+lapply(
+  sort(unique(cir_plot$time)),
+  transmissionSep_cir_plot,
+  threshold_min = 50,
+  threshold_max = Inf,
+  point_size = 1,
+  text_size = 7.5,
+  file_name_end = '_Over50TPM',
+  save = TRUE
+)
+```
+
+```{r ancestral_expression_barchart}
+
+# housekeeping_genes <- data.frame('HSP70' = 'PCHAS_0721000',
+#                              'MSP1' = 'PCHAS_0831300',
+#                              'AMA1' = 'PCHAS_0931000')
+
+cir_plot <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% c('PCHAS_0101200', 
+                       'PCHAS_0931000')) %>%
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(
+    stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+    transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+    diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+    time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+    subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)]
+  ) %>% 
+  mutate(subfam = ifelse(is.na(subfam), 'ref', subfam)) %>% 
+  filter(!(time %in% c('sch.culture', 
+                       'Unknown')),
+         transmission == 'rMT') %>% 
+  mutate(subfam = str_replace(subfam, 
+                              'ancestral',
+                              'a')) %>% 
+  mutate(
+    subfam = interaction(
+      transmission,
+      forcats::fct_shift(
+        relevel(
+          as.factor(subfam),
+          ref = 'ref')
+      ),
+      sep = '_',
+      lex.order = TRUE
+    )
+  )
+
+anc <- ggplot(data = cir_plot,
+       aes(x = time,
+           y = tpm,
+           fill = Geneid)) +
+  stat_summary(fun.y = median, 
+               fun.ymin = median, 
+               fun.ymax = median,
+               geom = "bar", 
+               width = 0.75, 
+               size = 0.25, 
+               position = 'dodge') +
+  geom_point(stat = 'identity', 
+             position = position_dodge(width = 0.75)) +
+  scale_y_continuous(n.breaks = 11) +
+   scale_fill_manual(values = cbPalette[c(5,8)],
+                     labels = c('ancestral pir', 
+                                'AMA1')) +
+  xlab('Time point') + ylab('TPM') +
+  theme_classic()
+
+ggsave(filename = 'tl19-07_barchart_tpm_RMT_ancestralpirAMA1.png',
+       plot = anc,
+       dpi = 300,
+       width = 20,
+       height = 10,
+       units = 'cm')
+
+```
+
+
+```{r rmt_pirs_higher_than_sbp_are_expressed_more}
+cir_rmt_sbp_hi <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_id) %>%
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(
+    stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+    transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+    diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+    time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+    subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)]
+  ) %>% 
+  filter(time == '14h') %>% 
+  group_by(transmission, time, Geneid) %>% 
+  summarise(tpm_mean = mean(tpm)) %>% 
+  dcast(Geneid ~ transmission, margins = c('tpm_mean')) %>% 
+  mutate(diff = ifelse(rMT - SBP > 0, 'RMT', 'SBP')) %>% 
+  melt(id.vars = c('Geneid', 'diff'), 
+       variable.name = 'transmission',
+       value.name = 'tpm_mean')
+
+cir_rmt_sbp_hi %>% 
+  group_by(diff) %>% 
+  summarise(tpm_mean = mean(tpm_mean))
+
+ggplot(cir_rmt_sbp_hi,
+       aes(x = diff,
+           y = log2(tpm_mean+1),
+           col = transmission)) +
+  geom_point(position = 'jitter') + geom_boxplot()
+```
+
+
+# Supp figure - Pir expression of AAPLs and ChAPLs.
+
+```{r Supp_fig_AapL-ChaAPl_expression}
+
+  cir_plot <- twentyfour_ct_comb$tpm %>% 
+    filter(Geneid %in% cir_id) %>%
+    melt(id.vars = 'Geneid', 
+         variable.name = 'sample', 
+         value.name = 'tpm') %>% 
+    mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+           transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+           diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+           time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+           subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)],
+           chapl_aapl = factor(cir_chapl_aapl_info$chapl_aapl[match(Geneid, 
+                                                                    cir_chapl_aapl_info$Geneid)],
+                               levels = sort(unique(cir_chapl_aapl_info$chapl_aapl[match(Geneid, 
+                                                                                         cir_chapl_aapl_info$Geneid)])))) %>% 
+    filter(!(time %in% c('sch', 
+                         'Unknown')),
+           !is.na(chapl_aapl) ) %>% 
+    group_by(Geneid) %>% 
+    # filter(
+    #   # all(tpm < 100),
+    #   #      any(tpm > 50)
+    #   subfam == 'S7'
+    #   ) %>% 
+    arrange(desc(tpm)) 
+  
+  cir_plot_order <- cir_plot %>% 
+    filter(time == '14h',
+           transmission == 'SBP') %>% 
+    arrange(desc(tpm))
+    
+  cir_plot <- mutate(cir_plot, 
+                     Geneid = factor(Geneid, 
+                                     levels = unique(cir_plot_order$Geneid)))
+  cir_plot_chapl_aapl_supp_info <- cir_plot
+  
+  max_aapl_chapl <- ceiling(max(log2(cir_plot$tpm+1)))
+  
+  breaks = seq(0, max_aapl_chapl, by = 1)
+    limits = c(0, max_aapl_chapl)
+    point_size = 0.25
+  
+  lapply(
+    sort(unique(cir_plot$time)),
+    function(time_vec){
+    
+    cir_plot <- filter(cir_plot, 
+                       time == time_vec)
+ 
+      cir_plot$tpm <- log2(1+cir_plot$tpm)
+    
+    cir_plot$Geneid <- factor(
+      str_remove(cir_plot$Geneid, 
+                 pattern = 'PCHAS_'),
+      levels = str_remove(levels(cir_plot$Geneid), 
+                          pattern = 'PCHAS_')
+    )
+    
+    y <- ggplot(
+      data = cir_plot,
+      mapping = aes(
+        x = Geneid,
+        fill = transmission,
+        y = tpm
+      )
+    ) +
+    stat_summary(fun.y = median, 
+                 fun.ymin = median, 
+                 fun.ymax = median,
+                 geom = "bar", 
+                 width = 0.75, 
+                 size = 0.25, 
+                 position = 'dodge') +
+    geom_point(stat = 'identity', 
+               position = position_dodge(width = 0.75),
+               size = point_size) +
+    scale_y_continuous(breaks = breaks,
+                       limits = limits) +
+      scale_fill_manual(values = c('skyblue','red')) +
+      ylab('log(TPM +1)') +
+    facet_grid(.~chapl_aapl, 
+             scales = "free_x",
+             space = "free_x") +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 90,
+                                 size = 5)
+    ) +
+    ggtitle(paste(unique(cir_plot$time)))
+
+    ggsave2(
+      paste0('tl20-05_side-by-side_barchart_chapl_aapl_',
+             time_vec,
+             '.png'),
+      plot = y,
+      dpi = 300,
+      width = 25,
+      height = 10,
+      units = 'cm'
+    )
+  return(y)
+})
+```
+
+# Chromosome 6 expression, split by ChAPL designation (mostly a ChAPL)
+
+```{r Chr6-ChaAPl_expression}
+
+  cir_plot <- twentyfour_ct_comb$tpm %>% 
+    filter(Geneid %in% cir_id) %>%
+    melt(id.vars = 'Geneid', 
+         variable.name = 'sample', 
+         value.name = 'tpm') %>% 
+    mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = ''),
+           transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1],
+           diff_count = str_split_fixed(sample, pattern = '_', n = 4)[,3],
+           time = str_split_fixed(sample, pattern = '_', n = 3)[,2],
+           subfam = cir_clade_info$clade[match(Geneid, cir_clade_info$Geneid)],
+           chrom = str_extract(Geneid, pattern = '(?<=PCHAS_)[:digit:]{2}'),
+           chapl_aapl = factor(cir_chapl_aapl_info$chapl_aapl[match(Geneid, 
+                                                                    cir_chapl_aapl_info$Geneid)],
+                               levels = sort(unique(cir_chapl_aapl_info$chapl_aapl[match(Geneid, 
+                                                                                         cir_chapl_aapl_info$Geneid)])))) %>% 
+    filter(!(time %in% c('sch', 
+                         'Unknown')),
+             chrom == '06') %>% 
+    group_by(Geneid) %>% 
+    # filter(
+    #   # all(tpm < 100),
+    #   #      any(tpm > 50)
+    #   subfam == 'S7'
+    #   ) %>% 
+    arrange(desc(tpm)) 
+  
+  cir_plot_order <- cir_plot %>% 
+    filter(time == '14h',
+           transmission == 'SBP') %>% 
+    arrange(desc(tpm))
+    
+  cir_plot <- mutate(cir_plot, 
+                     Geneid = factor(Geneid, 
+                                     levels = unique(cir_plot_order$Geneid)))
+  
+  breaks = c(7,6,5,4, 3, 2, 1, 0)
+    limits = c(0,7)
+    point_size = 0.25
+  
+  lapply(
+    sort(unique(cir_plot$time)),
+    function(time_vec){
+    
+    cir_plot <- filter(cir_plot, 
+                       time == time_vec)
+ 
+      cir_plot$tpm <- log2(1+cir_plot$tpm)
+    
+    cir_plot$Geneid <- factor(
+      str_remove(cir_plot$Geneid, 
+                 pattern = 'PCHAS_'),
+      levels = str_remove(levels(cir_plot$Geneid), 
+                          pattern = 'PCHAS_')
+    )
+    
+    y <- ggplot(
+      data = cir_plot,
+      mapping = aes(
+        x = Geneid,
+        fill = transmission,
+        y = tpm
+      )
+    ) +
+    stat_summary(fun.y = median, 
+                 fun.ymin = median, 
+                 fun.ymax = median,
+                 geom = "bar", 
+                 width = 0.75, 
+                 size = 0.25, 
+                 position = 'dodge') +
+    geom_point(stat = 'identity', 
+               position = position_dodge(width = 0.75),
+               size = point_size) +
+    scale_y_continuous(breaks = breaks,
+                       limits = limits) +
+    facet_grid(.~chapl_aapl, 
+             scales = "free_x",
+             space = "free_x") +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 90,
+                                 size = 5)
+    ) +
+    ggtitle(paste(unique(cir_plot$time)))
+
+    ggsave2(
+      paste0('tl20-05_side-by-side_barchart_chr6_chapl_',
+             time_vec,
+             '.png'),
+      plot = y,
+      dpi = 300,
+      width = 25,
+      height = 10,
+      units = 'cm'
+    )
+  return(y)
+})
+```
+
+## Bar chart of S and L clade expression across time.
+
+```{r SorL_barchart}
+tpm_data_SorL <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_id) %>% 
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(stage = str_extract(sample, 
+                             pattern = '(?<=\\w{3}_\\w{3}_).+(?=_[[:digit:]]$)|sch.culture')) %>%
+    mutate(stage = times_stages_table$time[match(stage, times_stages_table$r_stage_diff_count)]) %>% 
+  mutate(transmission = str_extract(sample, pattern = 'rMT|SBP')) %>% 
+  filter(stage != 'sch.culture') %>% 
+  mutate(clade = cir_clade_info$clade[match(Geneid, 
+                                            cir_clade_info$Geneid)]) %>% 
+  mutate(SorL = str_extract(clade, 
+                            pattern = '(L|S(?=[[:digit:]]))|ancestral|unk|pir-like'),
+         # stage =  factor(stage, levels = ordering(stage, order_vector))
+         ) %>% 
+  group_by(transmission,
+           stage, 
+           SorL) %>% 
+  dplyr::summarise(total_tpm = sum(tpm))
+
+y <- ggplot(data = tpm_data_SorL, 
+              aes(
+                x = transmission,
+                y = total_tpm, 
+                fill = SorL,
+                group = transmission
+              )) +
+    geom_bar(position = position_stack(),
+             stat = 'identity',
+             colour = 'black',
+             size = 0.1) +
+    scale_fill_manual(
+      values = SorL_col,
+      guide = guide_legend(reverse = TRUE)
+    ) +
+    scale_color_manual('black') + 
+    # labs(fill = stack_label) +
+    # scale_y_continuous(breaks = max_tpm) +
+    theme_classic() +
+    scale_size(range = c(0,3)) +
+    ylab(
+      bquote('total '~italic(.('pir'))~' TPM')
+    ) + 
+    facet_grid(.~stage, 
+               scales = "free_x",
+               space = "free_x") +
+    theme(
+      axis.title.x=element_blank(),
+      # axis.text.x=element_blank(),
+      axis.text.y = element_text(size = 5),
+      axis.title.y = element_text(size = 8),
+      legend.title = element_text(size = 7),
+      legend.text = element_text(size = 5),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
+      strip.text.x = element_text(size=7, 
+                                  face = 'bold', 
+                                  angle = 0),
+      strip.background = element_rect(
+        color="black", 
+        size=0.1, 
+        linetype="solid"
+      )
+    ) 
+y
+
+ggsave2('tl20-05_clades_totalTPM_barchart.pdf',
+        plot = y,
+        dpi = 300,
+        width = 15,
+        height = 10,
+        units = 'cm')
+  
+```
+
+## Clades proportion bar chart
+
+```{r clades_prop_barchart}
+tpm_data_clade <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_id) %>% 
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(stage = str_extract(sample, 
+                             pattern = '(?<=\\w{3}_\\w{3}_).+(?=_[[:digit:]]$)|sch.culture')) %>%
+  mutate(stage = times_stages_table$time[match(stage, times_stages_table$r_stage_diff_count)]) %>% 
+  mutate(transmission = str_extract(sample, pattern = 'rMT|SBP')) %>% 
+  filter(stage != 'sch.culture') %>% 
+  mutate(clade = cir_clade_info$clade[match(Geneid, 
+                                            cir_clade_info$Geneid)]) %>% 
+  # mutate(stage =  factor(stage, 
+  #                        levels = ordering(stage, 
+  #                                          order_vector))) %>% 
+  group_by(transmission,
+           stage, 
+           clade) %>% 
+  dplyr::summarise(total_tpm = sum(tpm)) %>% 
+  arrange(stage)
+
+y <- ggplot(data = tpm_data_clade, 
+              aes(
+                x = stage,
+                y = total_tpm, 
+                fill = clade,
+                group = transmission
+              )) +
+    geom_bar(position = 'fill',
+             stat = 'identity',
+             colour = 'black',
+             size = 0.1) +
+    scale_fill_manual(
+      breaks = sort(unique(tpm_data_clade$clade)),
+      values = clade_col,
+      guide = guide_legend(reverse = TRUE) 
+    ) +
+    scale_color_manual('black') + 
+    # labs(fill = stack_label) +
+    # scale_y_continuous(breaks = max_tpm) +
+    theme_classic() +
+    scale_size(range = c(0,3)) +
+    ylab(
+      bquote('proportion of total '~italic(.('pir'))~' TPM')
+    ) + 
+    facet_grid(.~transmission, 
+               scales = "free_x",
+               space = "free_x") +
+    theme(
+      axis.title.x=element_blank(),
+      axis.text.x=element_text(size = 7, 
+                                 angle = 90),
+      axis.text.y = element_text(size = 5),
+      axis.title.y = element_text(size = 8),
+      legend.title = element_text(size = 7),
+      legend.text = element_text(size = 5),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
+      strip.text.x = element_text(size=7, 
+                                  face = 'bold', 
+                                  angle = 0),
+      strip.background = element_rect(
+        color="black", 
+        size=0.1, 
+        linetype="solid"
+      )
+    ) 
+y
+
+ggsave2('tl20-05_subclades_propTPM_barchart.png',
+        plot = y,
+        dpi = 300,
+        width = 15,
+        height = 10,
+        units = 'cm')
+
+```
+
+```{r add_berghei_SorL_prop}
+#Add berghei data
+berghei_SorL_file <- list.files('../Manuscript_pirAnalysis_Github/Pberghei/', 
+                                recursive = TRUE, 
+                                pattern = 'tl20-05_SorL-subfamily_pir.csv', 
+                                full.names = TRUE)
+berghei_SorL <- read_csv(berghei_SorL_file) %>% 
+  filter(stage %in% c('Asex.SchizA',
+                      'Asex.SchizB',
+                      'Asex.Ring',
+                      'Asex.Troph',
+                      'Asex.Mixed')) 
+berghei_SorL_avg <- berghei_SorL %>% 
+  group_by(stage,
+           SorL) %>% 
+  dplyr::summarise(total_tpm = sum(total_tpm)) %>% 
+  mutate(SorL = str_extract(SorL,
+                            pattern = 'S|L|ancestral'),
+         transmission = 'berghei')
+
+```
+
+```{r}
+y <- ggplot(data = rbind(
+  tpm_data_SorL,
+  berghei_SorL_avg
+), 
+aes(
+  x = stage,
+  y = total_tpm, 
+  fill = SorL,
+  # group = transmission
+)) +
+  geom_bar(position = 'fill',
+           stat = 'identity',
+           colour = 'black',
+           size = 0.1) +
+  scale_fill_manual(
+    values = SorL_col,
+    guide = guide_legend(reverse = FALSE)
+  ) +
+  scale_color_manual('black') + 
+  # labs(fill = stack_label) +
+  # scale_y_continuous(breaks = max_tpm) +
+  theme_classic() +
+  scale_size(range = c(0,3)) +
+  ylab(
+    bquote('proportion of total '~italic(.('pir'))~' TPM')
+  ) + 
+  facet_grid(.~transmission, 
+             scales = "free_x",
+             space = "free_x") +
+  labs(fill = 'sub-family') +
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_text(angle = 90),
+    axis.text.y = element_text(size = 5),
+    axis.title.y = element_text(size = 8),
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 5),
+    legend.key.size = unit(3,'mm'),
+    legend.key.width = unit(2,'mm'),
+    strip.text.x = element_text(size=7, 
+                                face = 'bold', 
+                                angle = 0),
+    strip.background = element_rect(
+      color="black", 
+      size=0.1, 
+      linetype="solid"
+    )
+  ) 
+y
+
+ggsave2('tl20-05_SorL_totalTPM_facet-transmission_prop_barchart.pdf',
+        plot = y,
+        dpi = 300,
+        width = 15,
+        height = 10,
+        units = 'cm')
+```
+
+```{r SorL_barchart_transmission-facet}
+tpm_data_SorL <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_id) %>% 
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(stage = str_extract(sample, 
+                             pattern = '(?<=\\w{3}_\\w{3}_).+(?=_[[:digit:]]$)|sch.culture')) %>%
+    mutate(stage = times_stages_table$time[match(stage, times_stages_table$r_stage_diff_count)]) %>% 
+  mutate(transmission = str_extract(sample, pattern = 'rMT|SBP')) %>% 
+  filter(stage != 'sch.culture') %>% 
+  mutate(clade = cir_clade_info$clade[match(Geneid, 
+                                            cir_clade_info$Geneid)]) %>% 
+  mutate(SorL = str_extract(clade, 
+                            pattern = '(L|S(?=[[:digit:]]))|ancestral|unk|pir-like'),
+         # stage =  factor(stage, levels = ordering(stage, order_vector))
+         ) %>% 
+  group_by(transmission,
+           stage, 
+           SorL) %>% 
+  dplyr::summarise(total_tpm = sum(tpm)) %>% 
+  mutate(SorL = factor(SorL, 
+                       levels = sort(unique(SorL))))
+
+y <- ggplot(data = tpm_data_SorL, 
+              aes(
+                x = stage,
+                y = total_tpm, 
+                fill = SorL,
+                # group = transmission
+              )) +
+  geom_bar(position = position_stack(),
+           stat = 'identity',
+           colour = 'black',
+           size = 0.1) +
+  scale_fill_manual(
+    values = SorL_col,
+    guide = guide_legend(reverse = FALSE)
+  ) +
+  scale_color_manual('black') + 
+  # labs(fill = stack_label) +
+  # scale_y_continuous(breaks = max_tpm) +
+  theme_classic() +
+  scale_size(range = c(0,3)) +
+  ylab(
+    bquote('total '~italic(.('pir'))~' TPM')
+  ) + 
+  facet_grid(.~transmission, 
+             scales = "free_x",
+             space = "free_x") +
+  labs(fill = 'sub-family') +
+    theme(
+      axis.title.x=element_blank(),
+      # axis.text.x=element_blank(),
+      axis.text.y = element_text(size = 5),
+      axis.title.y = element_text(size = 8),
+      legend.title = element_text(size = 7),
+      legend.text = element_text(size = 5),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
+      strip.text.x = element_text(size=7, 
+                                  face = 'bold', 
+                                  angle = 0),
+      strip.background = element_rect(
+        color="black", 
+        size=0.1, 
+        linetype="solid"
+      )
+    ) 
+y
+
+ggsave2('tl20-05_SorL_totalTPM_facet-transmission_barchart.pdf',
+        plot = y,
+        dpi = 300,
+        width = 15,
+        height = 10,
+        units = 'cm')
+  
+```
+
+```{r proportion_data}
+
+tpm_data_twentyfour <- twentyfour_ct_comb$tpm %>% 
+  filter(Geneid %in% cir_id) %>% 
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(stage = str_extract(sample, 
+                             pattern = '(?<=\\w{3}_\\w{3}_).+(?=_[[:digit:]]$)|sch.culture')) %>%
+  mutate(transmission = str_extract(sample, pattern = 'rMT|SBP')) %>% 
+  filter(stage != 'sch.culture') %>% 
+  mutate(clade = cir_clade_info$clade[match(Geneid, 
+                                            cir_clade_info$Geneid)],
+         chrom = str_extract(Geneid, 
+                             pattern = '(?<=PCHAS_)[[:digit:]]{2}')
+         ) %>% 
+  mutate(
+    SorL = str_extract(clade, 
+                       pattern = '(L|S(?=[[:digit:]]))|ancestral|unk|pir-like'),
+    # stage =  factor(stage, 
+    #                 levels = ordering(stage, order_vector))
+  ) %>% 
+  group_by(transmission,
+           stage, 
+           Geneid,
+           clade,
+           chrom,
+           SorL) %>% 
+  dplyr::summarise(tpm = mean(tpm))
+
+```
+
+```{r chrom_prop_bar_chart}
+tpm_data_chrom <- tpm_data_twentyfour %>%
+  mutate(stage = times_stages_table$time[match(stage,
+                                               times_stages_table$r_stage_diff_count)]) %>%
+  group_by(transmission,
+           stage,
+           chrom) %>%
+  dplyr::summarise(total_tpm = sum(tpm))
+
+y <- ggplot(data = tpm_data_chrom) +
+  geom_bar_pattern(
+    aes(
+      x = stage,
+      y = total_tpm, 
+      fill = chrom,
+      group = transmission,
+      pattern = chrom
+    ),
+    position = 'fill',
+    stat = 'identity',
+    colour = 'black',
+    size = 0.1,
+    pattern_density = 0.05,
+    pattern_spacing = 0.02,
+    pattern_key_scale_factor = 0.5
+  ) +
+  scale_pattern_manual(
+    values = rep(c('none', 
+                   'circle'), 
+                 each = length(c(cbPalette, 
+                                 'red', 
+                                 'white')), 
+                 length.out = length(unique(tpm_data_chrom$chrom))),
+    labels = unique(tpm_data_chrom$chrom),
+    guide = guide_legend(reverse = TRUE),
+    name = 'chromosome'
+  ) +
+  scale_fill_manual(
+    breaks = unique(tpm_data_chrom$chrom),
+    values = rep_len(c(cbPalette, 
+                       'red', 
+                       'white'),
+                     length.out = length(unique(tpm_data_chrom$chrom))),
+    labels =  unique(tpm_data_chrom$chrom),
+    guide = guide_legend(reverse = TRUE),
+    name = 'chromosome'
+  ) +
+  scale_color_manual('black') + 
+  # labs(fill = stack_label) +
+  # scale_y_continuous(breaks = max_tpm) +
+  theme_classic() +
+    scale_size(range = c(0,3)) +
+    ylab(
+      bquote('proportion of '~italic(.('pir'))~' TPM')
+    ) + 
+    facet_grid(.~transmission, 
+               scales = "free_x",
+               space = "free_x") +
+    theme(
+      axis.title.x=element_blank(),
+      axis.text.x=element_text(size = 10, 
+                                 angle = 0),
+      axis.text.y = element_text(size = 5),
+      axis.title.y = element_text(size = 8),
+      legend.title = element_text(size = 7),
+      legend.text = element_text(size = 5),
+      legend.key.size = unit(3,'mm'),
+      legend.key.width = unit(2,'mm'),
+      strip.text.x = element_text(size=10, 
+                                  face = 'bold', 
+                                  angle = 0),
+      strip.background = element_rect(
+        color="black", 
+        size=0.1, 
+        linetype="solid"
+      )
+    ) 
+y
+
+ggsave2('tl19-05_chroms_propTPM_barchart.png',
+        plot = y,
+        dpi = 330,
+        width = 15,
+        height = 10,
+        units = 'cm')
+
+```
+
+### 2D plot of PC1 v PC2 - Supp figure 
+
+```{r pca_calculation, results = TRUE}
+twentyfour_tpm <- twentyfour_ct_comb_noschz$tpm
+rownames_geneid <- twentyfour_tpm$Geneid
+twentyfour_tpm_forpca <- select(twentyfour_tpm, -Geneid)
+rownames(twentyfour_tpm_forpca) <- rownames_geneid
+twentyfour_tpm_pca <- prcomp(twentyfour_tpm_forpca, center = TRUE, scale. = TRUE)
+#Need to look into what exactly scale and center are doing
+```
+
+```{r 2d_pca, results = TRUE}
+twentyfour_tpm_pca_var <- get_pca_var(twentyfour_tpm_pca)
+twentyfour_tpm_pca_coords <- data.frame(twentyfour_tpm_pca_var$coord)
+
+twentyfour_tpm_pca_coords <- data.frame(sample = rownames(twentyfour_tpm_pca_var$coord),
+                                        PC1 = twentyfour_tpm_pca_coords$Dim.1,
+                                        PC3 = twentyfour_tpm_pca_coords$Dim.3,
+                                        PC2 = twentyfour_tpm_pca_coords$Dim.2) %>% 
+  dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
+  dplyr::mutate(time = str_split_fixed(stage, pattern = '_', n = 2)[,2]) %>% 
+  dplyr::mutate(transmission = str_split_fixed(sample, pattern = '_', n = 3)[,1])
+
+colornames <- viridis(length(unique(twentyfour_tpm_pca_coords$time)))
+colornames <- setNames(colornames, 
+                       sort(unique(twentyfour_tpm_pca_coords$time)))
+
+
+pca_importance <- as.data.frame(summary(twentyfour_tpm_pca)$importance)
+pc1_importance <- round(pca_importance$PC1[2]*100, digits = 1)
+pc2_importance <- round(pca_importance$PC2[2]*100, digits = 1)
+pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
+
+(
+  plot <- ggplot(twentyfour_tpm_pca_coords,
+                 aes(
+                   x = PC1,
+                   y = PC2,
+                   col = time,
+                   shape = transmission
+                 )) +
+    geom_point(size = 3,
+               alpha = 0.8) +
+    scale_color_manual(values = colornames) +
+    scale_shape_manual(
+      values = setNames(
+        c(17,19),
+        unique(twentyfour_tpm_pca_coords$transmission)
+      )
+    ) +
+    xlab(paste0('PC1 ', round(pca_importance$PC1[2]*100, digits = 1),'%')) +
+    ylab(paste0('PC2 ', round(pca_importance$PC2[2]*100, digits = 1),'%')) +
+    guides(shape=guide_legend(ncol=2),
+           col = guide_legend(ncol=2)) +
+    theme_classic() +
+    theme(legend.key.size = unit(4, 'mm'),
+          legend.text = element_text(size = 7))
+)
+ggsave2(filename = 'tl19-07_chabaudi24h_supp_figure_pca_nopseudo.png',
+        plot = plot,
+        dpi = 300,
+        width = 15,
+        height = 10,
+        units = 'cm')
+
+```
+
+# z scores
+
+```{r read_z}
+### Read z-scores
+
+twentyfour_z <- list(
+  'rMT' = list(zscores = read_csv('tl19-07_chabaudi24h_rMT.csv'),
+               tpm = twentyfour_avgtpm_noschz$rMT$tpm,
+               experiment = 'rMT'),
+  'SBP' = list(zscores = read_csv('tl19-07_chabaudi24h_SBP.csv'),
+               tpm = twentyfour_avgtpm_noschz$SBP$tpm,
+               experiment = 'SBP')
+)
+
+###
+```
+
+# Phaseograms of the data. {.tabset}
+
+```{r row_order_phaseograms}
+
+#Getting the row order for each phaseogram for each experiment
+# Want the data ordered by the highest zscore for each gene in each stage.
+phaseogram_row_order <- lapply(twentyfour_z, 
+                               function(list_elements){
+                                 zscore_df <- list_elements$zscores
+                                 zscore_ordered <- melt(zscore_df, 
+                                                        id = 'Geneid',
+                                                        variable.name = 'stage',
+                                                        value.name = 'zscore') %>% 
+                                   group_by(Geneid) %>% 
+                                   top_n(zscore, n = 1) %>% 
+                                   arrange(stage, 
+                                           desc(zscore)) %>%
+                                   distinct(Geneid, 
+                                            .keep_all = TRUE) %>%  #Keep only the ones that are uniquely highest expressed in one sample
+                                   filter(zscore > 0) #For some reason some remain with zero zscore
+                                 # zscore_ordered <- zscore_ordered[order(
+                                 #   match(
+                                 #     zscore_ordered$stage, 
+                                 #     order_vector
+                                 #   )
+                                 # ),]
+                                 return(c(list_elements, 
+                                          list(zscore_order = zscore_ordered)))
+                               })
+
+phaseogram_time_order <- lapply(names(phaseogram_row_order), 
+                                function(list_element){
+                                  transmission_list <- getElement(phaseogram_row_order,
+                                                                  list_element)
+                                  order_by_time <- transmission_list$zscore_order %>% 
+                                    mutate(stage = times_stages_table$time[match(stage,
+                                                                                 times_stages_table$r_stage_diff_count)]) %>% 
+                                    arrange(stage)
+                                  return(list(zscore_order = order_by_time))
+                                }
+)
+names(phaseogram_time_order) <- names(phaseogram_row_order)
+
+
+```
+
+~~Change the lnTPM graph to a heatmap of max/min TPM a la Brugat 2017.~~
+
+~~Add annotation for the clades,~~ or possibly separate the heatmap by clade.
+
+Add threshold option.
+
+```{r function_draw_heatmap_zscore}
+
+draw_heatmap_zscore <- function(zscore_list,
+                                title = '',
+                                gene_ordering_vector = NULL,
+                                filter_genes_vector = NULL,
+                                extra_title = NULL,
+                                annotation_clade = NULL,
+                                annotation_col,
+                                threshold_tpm = NULL,
+                                use_times = FALSE,
+                                use_order_vector = TRUE,
+                                tpm_mat = TRUE,
+                                tpm_breaks = NULL,
+                                ...){
+  if(is.null(tpm_breaks) & tpm_mat | is.numeric(threshold_tpm)){
+    #Need the generate the breaks in the data for the heatmap legend if not provided.
+    # Threshold_tpm also needs this in order to filter lowly expressed genes.
+    max_tpm <- lapply(zscore_list, 
+                      function(list_element){
+                        #list_element <- zscore_list[[1]]
+                        heatmap_data <- as.data.frame(list_element$zscores)
+                        title <- list_element$experiment
+                        
+                        if(!'Geneid' %in% colnames(heatmap_data)){
+                          stop('No Geneid column in the heatmap data.frame')
+                        }
+                        
+                        if(!is.null(filter_genes_vector)){
+                          heatmap_data <- as.data.frame(
+                            filter(heatmap_data, 
+                                   Geneid %in% filter_genes_vector)
+                          )
+                        }
+                        
+                        rownames(heatmap_data) <- as.character(heatmap_data$Geneid)
+                        
+                        heatmap_data <- heatmap_data[, !colnames(heatmap_data) %in% 'Geneid', drop = TRUE]
+                        #This won't work if heatmap_data is a tibble, must be a data.frame, so annoying!!
+                        
+                        if(!is.null(gene_ordering_vector)){
+                          #Remove genes not in the main data frame but in the ordering vector, 
+                          # and then order based on the vector
+                          remove_index <- rownames(heatmap_data) %in% gene_ordering_vector
+                          heatmap_data <- heatmap_data[remove_index,,drop = FALSE]
+                          heatmap_data <- heatmap_data[na.omit(
+                            match(gene_ordering_vector, 
+                                  rownames(heatmap_data))
+                          ),,
+                          drop=FALSE]
+                        }
+                        
+                        geneids <- rownames(heatmap_data)
+                        
+                        #Get max/min TPM scores for the side annotation heatmap                       
+                        tpm_mat <- list_element$tpm[match(rownames(heatmap_data),
+                                                          list_element$tpm$Geneid),] %>% 
+                          select(-Geneid) %>% 
+                          as.matrix %>% 
+                          log1p
+                        rownames(tpm_mat) <- geneids
+                        
+                        tpm_min <- rowMins(tpm_mat)
+                        names(tpm_min) <- geneids
+                        tpm_max <- rowMaxs(tpm_mat)
+                        names(tpm_max) <- geneids
+                        return(list(tpm_max = tpm_max,
+                                    tpm_min = tpm_min))
+                      })
+    
+    tpm_max_all <- mround(
+      max(
+        unlist(
+          lapply(max_tpm, 
+                 getElement,
+                 'tpm_max')
+        )
+      ), 
+      base = 1)
+    
+    tpm_breaks <- round(
+      c(0,
+        tpm_max_all/4,
+        tpm_max_all/2,
+        tpm_max_all*(3/4),
+        tpm_max_all),
+      digits = 2
+    )
+  }
+  
+  #Generate the colour function from the TPM legend breaks for the TPM annotation
+  if(tpm_mat){
+    tpm_col_fun <- colorRamp2(
+      breaks = tpm_breaks,
+      colors = viridis(length(tpm_breaks))
+    )
+  }
+  
+  if(is.numeric(threshold_tpm)){
+    #Apply a threshold to the TPM in order to remove low expressed genes.
+    # Remember to add log1p here! 
+    # Threshold uses the max value, so it ony needs to be above thresh 
+    #   in one stage avg in one transmission method.
+    #Will alter the gene_filter vector in order to only select the genes above threshold
+    
+    gene_maxs <- bind_rows(
+      lapply(max_tpm, 
+             getElement,
+             'tpm_max')
+    )
+    
+    remove_genes <- names(gene_maxs)[apply(
+      gene_maxs, 
+      2, 
+      function(maxs){
+        all(maxs < log2(1+threshold_tpm))
+      }
+    )]
+    
+    filter_genes_vector <- filter_genes_vector[!filter_genes_vector %in% remove_genes]
+    
+  }
+  
+  if(is.character(annotation_clade)){
+    order_cir <- gene_ordering_vector[gene_ordering_vector %in% filter_genes_vector]
+    clade_info <- getElement(cir_clade_info,
+                             annotation_clade)[match(order_cir, 
+                                                     cir_clade_info$Geneid)]
+    names(clade_info) <- str_split_fixed(order_cir, 
+                                         pattern = '_', 
+                                         n = 2)[,2]
+    annotation_col <- annotation_col
+  }
+  
+  heatmaps <- lapply(zscore_list, 
+                     function(list_element){
+                       #list_element <- zscore_list[[1]]
+                       heatmap_data <- as.data.frame(list_element$zscores)
+                       title <- list_element$experiment
+                       
+                       if(!'Geneid' %in% colnames(heatmap_data)){
+                         stop('No Geneid column in the heatmap data.frame')
+                       }
+                       
+                       if(!is.null(filter_genes_vector)){
+                         heatmap_data <- as.data.frame(
+                           filter(heatmap_data, 
+                                  Geneid %in% filter_genes_vector)
+                         )
+                       }
+                       
+                       rownames(heatmap_data) <- as.character(heatmap_data$Geneid)
+                       
+                       heatmap_data <- heatmap_data[, !colnames(heatmap_data) %in% 'Geneid', drop = TRUE]
+                       #This won't work if heatmap_data is a tibble, must be a data.frame, so annoying!!
+                       
+                       if(!is.null(gene_ordering_vector)){
+                         #Remove genes not in the main data frame but in the ordering vector,
+                         #  and then order based on the vector
+                         remove_index <- rownames(heatmap_data) %in% gene_ordering_vector
+                         heatmap_data <- heatmap_data[remove_index,,drop = FALSE]
+                         heatmap_data <- heatmap_data[na.omit(
+                           match(gene_ordering_vector, 
+                                 rownames(heatmap_data))
+                         ),,
+                         drop=FALSE]
+                       }
+                       
+                       if(tpm_mat){
+                         #Get max/min TPM scores for the side annotation heatmap                       
+                         tpm_mat <- list_element$tpm[match(rownames(heatmap_data),
+                                                           list_element$tpm$Geneid),] %>%
+                           select(-Geneid) %>% 
+                           as.matrix %>% 
+                           log1p
+                         
+                         tpm_min <- rowMins(tpm_mat)
+                         tpm_max <- rowMaxs(tpm_mat)
+                         
+                         names(tpm_min) = rownames(heatmap_data)
+                         names(tpm_max) = rownames(heatmap_data)
+                         
+                         tpm_ha <- rowAnnotation(
+                           min.max = anno_simple(cbind(tpm_min, 
+                                                       tpm_max), 
+                                                 col = tpm_col_fun,
+                                                 gp = gpar(col = 'black',
+                                                           lwd = 0.1),
+                                                 border = TRUE,
+                                                 simple_anno_size = unit(0.2, "cm")),
+                           show_annotation_name = FALSE)
+                       }
+                       
+                       #Draw the left annotation is needed, only for the first element.
+                       
+                       if(
+                         identical(list_element,
+                                   dplyr::first(zscore_list)) & is.character(annotation_clade)
+                       ){
+                         clade_ha <- rowAnnotation(
+                           'subfamily' = anno_simple(
+                             clade_info,
+                             col = annotation_col
+                           )
+                         )
+                       }
+                       
+                       #Change rownames to remove PCHAS_
+                       rownames(heatmap_data) = str_split_fixed(rownames(heatmap_data), 
+                                                                pattern = '_', 
+                                                                n = 2)[,2]
+                       
+                       if(use_times){
+                         colnames(heatmap_data) <- times_stages_table$time[match(colnames(heatmap_data),
+                                                                                 times_stages_table$r_stage_diff_count)]
+                       }
+                       
+                       if(use_order_vector){
+                         #Order the columns by ordering_vector
+                         heatmap_data <- heatmap_data[,order(match(colnames(heatmap_data), 
+                                                                   order_vector)),
+                                                      drop = FALSE]
+                       }else{
+                         heatmap_data <- heatmap_data[,order(colnames(heatmap_data)),
+                                                      drop = FALSE] 
+                       }
+                       
+                       h = Heatmap(heatmap_data,
+                                   name = paste0('z-score',
+                                                 extra_title),
+                                   col = c(cbPalette[6],
+                                           'white', 
+                                           cbPalette[7]),
+                                   row_names_gp = gpar(fontsize = ifelse(
+                                     nrow(heatmap_data) > 13, 
+                                     12*(13/nrow(heatmap_data)), 
+                                     12)
+                                   ),
+                                   column_names_gp = gpar(fontsize = 10),
+                                   row_dend_width = unit(3, "cm"),
+                                   right_annotation = if(tpm_mat){
+                                     tpm_ha
+                                   }else{
+                                     NULL
+                                   },
+                                   left_annotation = 
+                                     if(identical(list_element,
+                                                  dplyr::first(zscore_list)) & is.character(annotation_clade)){
+                                       clade_ha
+                                     }else{
+                                       NULL
+                                     }, 
+                                   #Only want the clade annotation when it is first heatmap
+                                   width = unit(4.5, 'cm'),
+                                   cluster_columns = FALSE,
+                                   height = unit(7,'cm'),
+                                   row_title = NULL,
+                                   cluster_rows = FALSE,
+                                   column_title = paste(title),
+                                   heatmap_legend_param = list(
+                                     at = c(3,2,1,0,-1,-2,-3),
+                                     labels_gp = gpar(fontsize = 10),
+                                     title_gp = gpar(fontsize = 10)
+                                   ),
+                                   ...
+                       )
+                       return(h)
+                     })
+  
+  ht_list <- Reduce('+', heatmaps) #To add the list elements together
+  
+  if(tpm_mat){
+    #Draw the legend
+    tpm_lgd <- Legend(
+      title = "Min/Max log(TPM + 1)", 
+      col = tpm_col_fun, 
+      at = tpm_breaks, 
+      labels = tpm_breaks,
+      title_gp = gpar(fontsize = 7)
+    )
+  }
+  
+  if(is.character(annotation_clade)){
+    clade_lgd <- Legend(
+      title = 'sub-family',
+      at = names(annotation_col),
+      legend_gp = gpar(fill = annotation_col)
+    )
+  }
+  
+  draw(ht_list, 
+       row_title_side = 'left',
+       column_title_side = 'bottom',
+       heatmap_legend_side = 'left',
+       #Only include the annotation legends for the annotations we actually have.
+       annotation_legend_list = if(is.character(annotation_clade) & tpm_mat){
+         list(tpm_lgd,
+              clade_lgd)
+       }else if(tpm_mat & !is.character(annotation_clade) ){
+         list(tpm_lgd)
+       } else if(!tpm_mat & is.character(annotation_clade) ){
+         list(clade_lgd)
+       })
+}
+```
+
+## Phaseograms of the entire genome.
+
+```{r phaseograms_whole_genome}
+png(filename = 'tl19-07_phaseogram_rMTorder_allgenes_filter1TPM.png',
+    units = 'cm',
+    height = 20,
+    width = 22,
+    res = 330)
+draw_heatmap_zscore(zscore_list = twentyfour_z,
+                    gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = FALSE,
+                    threshold_tpm = 1)
+dev.off()
+```
+
+## Phaseograms of the _cir_ genes with clade annotations.
+
+```{r pir_gene_phaseogram_breaks}
+  max_tpm <- lapply(twentyfour_z, 
+                    function(list_element){
+                      #list_element <- zscore_list[[1]]
+                      heatmap_data <- as.data.frame(list_element$zscores)
+                      title <- list_element$experiment
+                      
+                      if(!'Geneid' %in% colnames(heatmap_data)){
+                        stop('No Geneid column in the heatmap data.frame')
+                      }
+                          
+                            heatmap_data <- as.data.frame(
+                              filter(heatmap_data, 
+                                     Geneid %in% cir_id)
+                            )
+                        
+                          rownames(heatmap_data) <- as.character(heatmap_data$Geneid)
+                          
+                          heatmap_data <- heatmap_data[, !colnames(heatmap_data) %in% 'Geneid', drop = TRUE]
+                          #This won't work if heatmap_data is a tibble, must be a data.frame, so annoying!!
+                          # 
+                          # if(!is.null(gene_ordering_vector)){
+                          #   #Remove genes not in the main data frame but in the ordering vector, 
+                          #   # and then order based on the vector
+                          #   remove_index <- rownames(heatmap_data) %in% gene_ordering_vector
+                          #   heatmap_data <- heatmap_data[remove_index,,drop = FALSE]
+                          #   heatmap_data <- heatmap_data[na.omit(
+                          #     match(gene_ordering_vector, 
+                          #           rownames(heatmap_data))
+                          #   ),,
+                          #   drop=FALSE]
+                          # }
+                          
+                          geneids <- rownames(heatmap_data)
+                          
+                          #Get max/min TPM scores for the side annotation heatmap                       
+                          tpm_mat <- list_element$tpm[match(rownames(heatmap_data),
+                                                            list_element$tpm$Geneid),] %>% 
+                            select(-Geneid) %>% 
+                            as.matrix %>% 
+                            log1p
+                          rownames(tpm_mat) <- geneids
+                          
+                          tpm_min <- rowMins(tpm_mat)
+                          names(tpm_min) <- geneids
+                          tpm_max <- rowMaxs(tpm_mat)
+                          names(tpm_max) <- geneids
+                          return(list(tpm_max = tpm_max,
+                                      tpm_min = tpm_min))
+                        })
+  
+  tpm_max_all <- mround(
+    max(
+      unlist(
+        lapply(max_tpm, 
+               getElement,
+               'tpm_max')
+      )
+    ), 
+    base = 1)
+  
+  tpm_breaks <- round(
+    c(0,
+      tpm_max_all/4,
+      tpm_max_all/2,
+      tpm_max_all*(3/4),
+      tpm_max_all),
+    digits = 2
+  )
+```
+
+
+```{r phaseograms_cir_order_each}
+
+#Generate the colour function from the TPM legend breaks for the TPM annotation
+
+tpm_col_fun <- colorRamp2(
+  breaks = tpm_breaks,
+  colors = viridis(length(tpm_breaks))
+)
+
+#Apply a threshold to the TPM in order to remove low expressed genes.
+# Remember to add log1p here! 
+# Threshold uses the max value, so it ony needs to be above thresh 
+#   in one stage avg in one transmission method.
+#Will alter the gene_filter vector in order to only select the genes above threshold
+
+gene_maxs <- bind_rows(
+  lapply(max_tpm, 
+         getElement,
+         'tpm_max')
+)
+
+remove_genes <- names(gene_maxs)[apply(
+  gene_maxs, 
+  2, 
+  function(maxs){
+    all(maxs < log2(1+1))
+  }
+)]
+
+filter_genes_vector <- cir_id[!cir_id %in% remove_genes]
+
+heatmaps <- lapply(names(twentyfour_z), 
+                   function(list_name){
+                     list_element <- getElement(twentyfour_z, 
+                                                list_name)
+                     #list_name <- names(twentyfour_z)[[1]]
+                     heatmap_data <- as.data.frame(list_element$zscores)
+                     title <- list_element$experiment
+                     
+                     heatmap_data <- as.data.frame(
+                       filter(heatmap_data, 
+                              Geneid %in% filter_genes_vector)
+                     )
+                     
+                     rownames(heatmap_data) <- as.character(heatmap_data$Geneid)
+                     
+                     heatmap_data <- heatmap_data[, 
+                                                  !colnames(heatmap_data) %in% 'Geneid', 
+                                                  drop = TRUE]
+                     #This won't work if heatmap_data is a tibble, must be a data.frame, so annoying!!
+                     
+                     #Remove genes not in the main data frame but in the ordering vector,
+                     #  and then order based on the vector
+                     gene_ordering_vector <- getElement(phaseogram_time_order,
+                                                        list_name)$zscore_order$Geneid
+                     
+                     order_cir <- gene_ordering_vector[gene_ordering_vector %in% filter_genes_vector]
+                     clade_info <- getElement(cir_clade_info,
+                                              'SorL')[match(order_cir, 
+                                                            cir_clade_info$Geneid)]
+                     names(clade_info) <- str_split_fixed(order_cir, 
+                                                          pattern = '_', 
+                                                          n = 2)[,2]
+                     annotation_col <- SorL_col
+                     
+                     remove_index <- rownames(heatmap_data) %in% gene_ordering_vector
+                     heatmap_data <- heatmap_data[remove_index,
+                                                  ,
+                                                  drop = FALSE]
+                     heatmap_data <- heatmap_data[na.omit(
+                       match(gene_ordering_vector, 
+                             rownames(heatmap_data))
+                     ),
+                     ,
+                     drop=FALSE]
+                     
+                     #Get max/min TPM scores for the side annotation heatmap                       
+                     tpm_mat <- list_element$tpm[match(rownames(heatmap_data),
+                                                       list_element$tpm$Geneid),] %>%
+                       select(-Geneid) %>% 
+                       as.matrix %>% 
+                       log1p
+                     
+                     tpm_min <- rowMins(tpm_mat)
+                     tpm_max <- rowMaxs(tpm_mat)
+                     
+                     names(tpm_min) = rownames(heatmap_data)
+                     names(tpm_max) = rownames(heatmap_data)
+                     
+                     tpm_ha <- rowAnnotation(
+                       min.max = anno_simple(cbind(tpm_min, 
+                                                   tpm_max), 
+                                             col = tpm_col_fun,
+                                             gp = gpar(col = 'black',
+                                                       lwd = 0.1),
+                                             border = TRUE,
+                                             simple_anno_size = unit(0.2, "cm")),
+                       show_annotation_name = FALSE)
+                     
+                     #Clade annotation
+                     
+                     clade_ha <- rowAnnotation(
+                       'sub-family' = anno_simple(
+                         clade_info,
+                         col = annotation_col,
+                       ),
+                       annotation_name_gp = gpar(fontsize = 10)
+                     )
+                     
+                     #Change rownames to remove PCHAS_
+                     rownames(heatmap_data) = str_split_fixed(rownames(heatmap_data), 
+                                                              pattern = '_', 
+                                                              n = 2)[,2]
+                     
+                     colnames(heatmap_data) <- times_stages_table$time[match(colnames(heatmap_data),
+                                                                             times_stages_table$r_stage_diff_count)]
+                     
+                     heatmap_data <- heatmap_data[,order(colnames(heatmap_data)),
+                                                  drop = FALSE] 
+                     
+                     
+                     h = Heatmap(heatmap_data,
+                                 name = paste0('z-score'),
+                                 col = c(cbPalette[6],
+                                         'white', 
+                                         cbPalette[7]),
+                                 row_names_gp = gpar(fontsize = ifelse(
+                                   nrow(heatmap_data) > 13, 
+                                   12*(13/nrow(heatmap_data)), 
+                                   12)
+                                 ),
+                                 column_names_gp = gpar(fontsize = 10),
+                                 row_dend_width = unit(3, "cm"),
+                                 right_annotation = tpm_ha,
+                                 left_annotation = clade_ha,
+                                 width = unit(4.5, 'cm'),
+                                 cluster_columns = FALSE,
+                                 height = unit(7,'cm'),
+                                 row_title = NULL,
+                                 cluster_rows = FALSE,
+                                 column_title = paste(title),
+                                 heatmap_legend_param = list(
+                                   at = c(3,2,1,0,-1,-2,-3),
+                                   labels_gp = gpar(fontsize = 10),
+                                     title_gp = gpar(fontsize = 10)
+                                 ),
+                                 show_row_names = FALSE
+                     )
+                     return(h)
+                   })
+
+ht_list <- Reduce('+', heatmaps) #To add the list elements together
+
+#Draw the legend
+tpm_lgd <- Legend(
+  title = "Min/Max log(TPM + 1)", 
+  col = tpm_col_fun, 
+  at = tpm_breaks, 
+  labels = tpm_breaks,
+  title_gp = gpar(fontsize = 7)
+)
+
+clade_lgd <- Legend(
+  title = 'sub-family',
+  at = names(SorL_col),
+  legend_gp = gpar(fill = SorL_col)
+)
+
+png(filename = 'tl19-07_phaseogram_each-in-order_cir_clades.png',
+    units = 'cm',
+    height = 20,
+    width = 22,
+    res = 200)
+
+  draw(ht_list, 
+       row_title_side = 'left',
+       column_title_side = 'bottom',
+       heatmap_legend_side = 'left',
+       annotation_legend_list = 
+         list(tpm_lgd,
+              clade_lgd),
+       ht_gap = unit(.5,'cm')
+       )
+  
+  dev.off()
+
+
+```
+
+```{r phaseograms_cir}
+png(filename = 'tl19-07_phaseogram_rMTorder_cir_clades_filter1TPM.png',
+    units = 'cm',
+    height = 20,
+    width = 22,
+    res = 330)
+draw_heatmap_zscore(zscore_list = twentyfour_z,
+                    gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                    filter_genes_vector = cir_id,
+                    annotation_clade = 'clade',
+                    annotation_col = clade_col,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    tpm_mat = FALSE)
+dev.off()
+
+png(filename = 'tl19-07_phaseogram_rMTorder_cir_SorL_filter1TPM.png',
+    units = 'cm',
+    height = 20,
+    width = 22,
+    res = 330)
+draw_heatmap_zscore(zscore_list = twentyfour_z,
+                    gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                    filter_genes_vector = cir_id,
+                    annotation_clade = 'SorL',
+                    annotation_col = SorL_col,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = FALSE)
+dev.off()
+draw_heatmap_zscore(zscore_list = twentyfour_z,
+                    gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                    filter_genes_vector = cir_id,
+                    annotation_clade = 'SorL',
+                    annotation_col = SorL_col,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = FALSE)
+
+png(filename = 'tl19-07_phaseogram_SBPorder_cir_SorL_filter1TPM.png',
+    units = 'cm',
+    height = 20,
+    width = 22,
+    res = 330)
+draw_heatmap_zscore(zscore_list = twentyfour_z,
+                    gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
+                    filter_genes_vector = cir_id,
+                    annotation_clade = 'SorL',
+                    annotation_col = SorL_col,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_breaks = tpm_breaks,
+                    tpm_mat = FALSE)
+dev.off()
+draw_heatmap_zscore(zscore_list = twentyfour_z,
+                    gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
+                    filter_genes_vector = cir_id,
+                    annotation_clade = 'SorL',
+                    annotation_col = SorL_col,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_breaks = tpm_breaks,
+                    tpm_mat = FALSE)
+
+```
+## Figure 3b - Highest expressed all _pir_ heatmap
+
+```{r highest_expressed_stage_heatmap_fig3b}
+
+
+num_SorL <- cir_info %>% 
+  group_by(SorL) %>% 
+  summarise(num = n_distinct(Gene.ID))
+
+labels_SorL <- setNames(paste0(num_SorL$SorL, ' (n = ', num_SorL$num, ')'),
+                        num_SorL$SorL)
+
+
+# Get order of pir genes by highest expressed genes in each sample.
+
+combined_data_pir_ht_list <- lapply(names(twentyfour_avgtpm_noschz), 
+       function(list_name){
+         
+         combined_data_pir <- getElement(twentyfour_avgtpm_noschz, 
+                                     list_name)$tpm %>% 
+           filter(Geneid %in% cir_id) %>% 
+           column_to_rownames(var = 'Geneid')
+         
+         #Ordering that a more understandable order
+         
+         combined_data_pir <- combined_data_pir[,c(ordering(colnames(combined_data_pir)[-1], 
+                                                            order_vector)),
+                                                drop = FALSE]
+         
+         combined_data_ordered <- tibble(Geneid = names(apply(combined_data_pir, 1, mean)),
+                                         means = apply(combined_data_pir, 1, mean),
+                                         subfam = cir_clade_info$SorL[match(names(apply(combined_data_pir, 1, mean)), 
+                                                                            cir_clade_info$Geneid)]) %>% 
+           filter(means > 1) %>% 
+           arrange(subfam, 
+                   desc(means)) %>% 
+           .$Geneid
+         
+         #Order the heatmap data by the order defined above (SorL, then mean expression).
+         combined_data_pir_ht <- combined_data_pir[
+           order(
+             match(rownames(combined_data_pir),
+                   combined_data_ordered),
+             na.last = NA #Remove NAs
+           ),
+         ]
+         
+         #Change the colnames to the times
+         colnames(combined_data_pir_ht) <- times_stages_table$time[match(colnames(combined_data_pir_ht),
+                                                                         
+                                                                         times_stages_table$r_stage_diff_count)]
+         
+         #Order by time point
+         combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
+                                                      drop = FALSE] 
+         #Add a column for the SorL
+         combined_data_pir_ht$SorL <- cir_clade_info$SorL[match(names(apply(combined_data_pir_ht, 1, mean)), 
+                                                                cir_clade_info$Geneid)]
+         
+         return(combined_data_pir_ht)
+       })
+names(combined_data_pir_ht_list) <- names(twentyfour_avgtpm_noschz)
+
+maxcol <- ceiling(
+  max(
+    unlist(
+      lapply(combined_data_pir_ht_list,
+             function(list_element){
+               max(
+                 log2(1+list_element[!colnames(list_element) %in% 'SorL'])
+               )
+             }
+      )
+    )
+  )
+)
+
+lapply(names(combined_data_pir_ht_list),
+       function(list_name_to_order){
+         
+         combined_data_pir_ht <- getElement(combined_data_pir_ht_list,
+                                            list_name_to_order)
+         
+         pir_highest_tpm_order <- rownames(combined_data_pir_ht)
+         
+         #Sub-family annotation
+         clade_info <- combined_data_pir_ht$SorL
+         annotation_col <- SorL_col
+         
+         #Subfamily annotation
+         
+         clade_ha <- rowAnnotation(
+           'sub-family' = anno_simple(
+             clade_info,
+             col = annotation_col,
+           ),
+           annotation_name_gp = gpar(fontsize = 10)
+         )
+         
+         anc_ha <- rowAnnotation(foo = anno_mark(at =  na.omit(match(clade_info, 'ancestral')) , 
+                                                 labels = 'ancestral',
+                                                 labels_gp = gpar(fontsize = 7),
+                                                 link_width = unit(3, "mm")))
+         
+         #lapply across the datasets now, for each order
+         ht_list <- lapply(names(combined_data_pir_ht_list),
+                           function(list_name){
+                             
+                             combined_data_pir_ht <- getElement(twentyfour_avgtpm_noschz, 
+                                                                list_name)$tpm %>% 
+                               column_to_rownames(var = 'Geneid')
+                             
+                             #Get the times instead of the stage names.
+                             colnames(combined_data_pir_ht) <- times_stages_table$time[match(colnames(combined_data_pir_ht),
+                                                                                             
+                                                                                             times_stages_table$r_stage_diff_count)]
+                             
+                             combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
+                                                                          drop = FALSE] 
+                             
+                             
+                             Heatmap(
+                               log2(1+combined_data_pir_ht)[pir_highest_tpm_order,],
+                               cluster_rows = FALSE,
+                               cluster_columns = FALSE,
+                               show_row_names = FALSE,
+                               name = 'log(TPM+1)', 
+                               col = colorRamp2(c(0,
+                                                  maxcol/4,
+                                                  maxcol/2,
+                                                  3*maxcol/4,
+                                                  maxcol),
+                                                viridis(5)),
+                               na_col = 'white', 
+                               border = TRUE,
+                               border_gp = gpar(lwd = 0.1),
+                               column_names_gp = gpar(fontsize = 10),
+                               row_dend_width = unit(3, "cm"),
+                               width = unit(4.5, 'cm'),
+                               height = unit(7,'cm'),
+                               row_title = NULL,
+                               left_annotation = if(
+                                 list_name %in% dplyr::first(names(combined_data_pir_ht_list))
+                               ){
+                                 clade_ha
+                               }else{
+                                 NULL
+                               },
+                               right_annotation = if(
+                                 list_name %in% dplyr::last(names(combined_data_pir_ht_list))
+                               ){
+                                 anc_ha
+                               }else{
+                                 NULL
+                               },
+                               # row_split =  cir_clade_info$SorL[match(pir_highest_tpm_order, 
+                               #                                        cir_clade_info$Geneid)],
+                               column_title = paste(list_name),
+                               heatmap_legend_param = list(
+                                 labels_gp = gpar(fontsize = 10),
+                                 title_gp = gpar(fontsize = 10,
+                                                 fontface = 'bold'),
+                                 at = c(0,
+                                        maxcol/4,
+                                        maxcol/2,
+                                        3*maxcol/4,
+                                        maxcol)
+                               )
+                             )
+                           }
+         )
+         ht_list <- Reduce(`+`, ht_list)
+         clade_lgd <- Legend(
+           title = 'sub-family',
+           at = labels_SorL,
+           legend_gp = gpar(fill = SorL_col)
+         )
+         
+         png(filename = paste0('tl19-07_combined_pirs_ordered_highest_stage_expression_heatmap_TPM_',
+                               list_name_to_order, 'order',
+                               '.png'),
+             width = 20,
+             height = 10,
+             units = 'cm',
+             res = 330)
+         
+         draw(ht_list, 
+              row_title_side = 'left',
+              column_title_side = 'bottom',
+              heatmap_legend_side = 'right',
+              annotation_legend_side = 'right',
+              annotation_legend_list = list(clade_lgd),
+              ht_gap = unit(.35,'cm'),
+              merge_legend = TRUE
+         )
+         
+         dev.off()
+         return(
+           draw(ht_list, 
+                row_title_side = 'left',
+                column_title_side = 'bottom',
+                heatmap_legend_side = 'right',
+                annotation_legend_side = 'right',
+                annotation_legend_list = list(clade_lgd),
+                ht_gap = unit(.35,'cm'),
+                merge_legend = TRUE
+           ))
+       })
+
+```
+
+# ```{r figure_3b_suppinfo}
+# 
+# supp_info_fig_3b <- lapply(names(combined_data_pir_ht_list),
+#        function(list_name){
+#          
+#          combined_data_pir_ht <- getElement(twentyfour_avgtpm_noschz, 
+#                                             list_name)$tpm %>% 
+#            column_to_rownames(var = 'Geneid')
+#          
+#          #Get the times instead of the stage names.
+#          colnames(combined_data_pir_ht) <- times_stages_table$time[match(colnames(combined_data_pir_ht),
+#                                                                          
+#                                                                          times_stages_table$r_stage_diff_count)]
+#          
+#          combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
+#                                                       drop = FALSE] 
+#          
+#          colnames(combined_data_pir_ht) <- paste0(list_name, 
+#                                                   '_', 
+#                                                   colnames(combined_data_pir_ht))
+#          
+#          log2(1+combined_data_pir_ht)[pir_highest_tpm_order,]
+#        }) %>% bind_cols
+# 
+# supp_info_fig_3b$SorL <- cir_clade_info$SorL[match(names(apply(supp_info_fig_3b, 1, mean)), 
+#                                                                 cir_clade_info$Geneid)]
+# 
+# ```
+
+
+# Lower pir expression vs rest of genome
+
+```{r low_pir_expression}
+set.seed(4534)
+
+gene_expression_df <- twentyfour_ct_comb$tpm %>% 
+  melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'tpm') %>% 
+  mutate(stage = str_extract(sample, 
+                             pattern = '(?<=\\w{3}_\\w{3}_).+(?=_[[:digit:]]$)|sch.culture')) %>%
+  mutate(transmission = str_extract(sample, pattern = 'rMT|SBP')) %>% 
+  filter(stage != 'sch.culture') %>% 
+  mutate(pir_gene = ifelse(Geneid %in% cir_id,
+                           'pir',
+                           'non-pir')) %>% 
+  group_by(stage, 
+           pir_gene,
+           transmission) %>% 
+  slice_sample(n = length(cir_id)) %>%
+  summarise(mean_tpm = mean(tpm),
+            med_tpm = round(median(tpm),
+                            digits = 6)) 
+
+gene_expression_df %>% 
+  group_by(transmission, 
+           pir_gene) %>% 
+  slice_min(mean_tpm, n =1)
+
+gene_expression_df %>% 
+  group_by(transmission, 
+           pir_gene) %>% 
+  slice_max(mean_tpm, n =1)
+
+y <- ggplot(gene_expression_df,
+       aes(x = pir_gene,
+           y = log2(1+mean_tpm))) +
+  facet_grid(~transmission) +
+  ggtitle(expression(paste(italic('P. chabaudi'), ' 24h cycle'))) +
+  xlab('Gene group')+
+  ylab('log(Median TPM + 1)')+
+  # geom_violin()+
+  geom_dotplot(binaxis = 'y',
+               stackdir = 'center',
+               # binwidth = 1,
+               # dotsize = 2,
+               method = 'dotdensity') +
+  geom_path(aes(group = stage,
+                col = stage)) +
+  theme_classic()
+y
+
+ggsave2('tl19-07_pir-v-nonpir_mean_TPM_barchart.pdf',
+        plot = y,
+        dpi = 300,
+        width = 15,
+        height = 10,
+        units = 'cm')
+```
+
+```{r write_excel_data_sheets}
+
+twentyfour_avgtpm_noschz_timecolnames <- lapply(names(twentyfour_avgtpm_noschz), 
+                                                function(list_name){
+                                                  list_element <- getElement(twentyfour_avgtpm_noschz, list_name)
+                                                  colnames(list_element$tpm)[-1] <- times_stages_table$time[match(colnames(list_element$tpm)[-1],
+                                                                                                              times_stages_table$r_stage_diff_count)]
+                                                  list_element$tpm <- list_element$tpm[c('Geneid',sort(colnames(list_element$tpm)[-1]))]
+                                                  return(list_element)
+                                                })
+names(twentyfour_avgtpm_noschz_timecolnames) <- names(twentyfour_avgtpm_noschz)
+
+twentyfour_z_timecolnames <- lapply(names(twentyfour_z), 
+                                    function(list_name){
+                                      list_element <- getElement(twentyfour_z, list_name)
+                                      colnames(list_element$zscores)[-1] <- times_stages_table$time[match(colnames(list_element$zscores)[-1],
+                                                                                                          times_stages_table$r_stage_diff_count)]
+                                      list_element$zscores <- list_element$zscores[c('Geneid',sort(colnames(list_element$zscores)[-1]))]
+                                      return(list_element)
+                                    })
+names(twentyfour_z_timecolnames) <- names(twentyfour_z)
+
+excel_data <- list(
+  pir_gene_info = cir_info,
+  chab_TPM_bioreps = twentyfour_ct_comb_noschz$tpm[,c('Geneid',sort(colnames(twentyfour_ct_comb_noschz$tpm)[-1]))] %>% 
+    select(matches('Geneid|rMT')) %>% 
+    dplyr::rename_with(~ str_remove_all(., pattern = 'rMT_'), everything()),
+  chab_TPM_avg = twentyfour_avgtpm_noschz_timecolnames$rMT$tpm,
+  # chab_TPM_avg_SBP = twentyfour_avgtpm_noschz_timecolnames$SBP$tpm,
+  # chab_logTPM_SorL_rMTorder = supp_info_fig_3b,
+  chab_TPM_ChaplAapl = select(cir_plot_chapl_aapl_supp_info, c(Geneid, time, transmission, chapl_aapl, sample, tpm)) %>% 
+    filter(transmission == 'rMT') %>% 
+    select(-transmission) %>% 
+    filter(time != 'sch.culture') %>% 
+    mutate(sample = str_remove_all(sample, pattern = 'rMT_')) %>% 
+    arrange(Geneid, time),
+  # chab_TPM_SorLSums = tpm_data_SorL,
+  # chab_TPM_SubfamSums = tpm_data_clade,
+  # chab_TPM_ChromSums = tpm_data_chrom,
+  chab_zscore = twentyfour_z_timecolnames$rMT$zscores
+  # chab_zscore_SBP = twentyfour_z_timecolnames$SBP$zscores
+)
+
+write_xlsx(excel_data,
+           path = 'Manuscript_SuppInfo_chabaudi24h.xlsx')
+
+```
+
