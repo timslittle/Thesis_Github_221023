@@ -1,0 +1,190 @@
+---
+title: "Manuscript_Github_Pchabaudi_calculateTPM"
+author: "Timothy Little"
+date: "22/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+knitr::opts_knit$set(root.dir = 
+                       ".")
+#Note that the above doesn't give an error if the dir doesn't exist
+
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+
+library('readr')
+library('dplyr')
+library('ggplot2')
+# library("pheatmap")
+library("RColorBrewer")
+library('data.table')
+library('gridExtra')
+library('tibble')
+library('stringr')
+library('kableExtra')
+library('viridis')
+# library('corrplot')
+# library('reshape2')
+# library('circlize') # for circular plots and colours
+# library('cluster')    # clustering algorithms
+# library('factoextra') # clustering algorithms & visualization
+# library('ggfortify') # so ggplot understands prcomp objects
+# library('ape') # for phylogeny plotting
+# library('dendextend') # for dendrogram plotting
+# library('readxl') # for reading in Excel spreadsheets
+# library('plotly')
+# library('scales')
+# library('processx') # for downloading the plotly plots
+# library('cowplot')
+# library('ComplexHeatmap')
+# library('ggpattern')
+
+#Colour blind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+show_col(cbPalette)
+
+#Want the defaults for arrange, mutate and summarise to be from dplyr
+arrange <- dplyr::arrange
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+select <- dplyr::select
+```
+
+```{r sourcing_functions}
+source('../rfunctions/uniquify_fun.R')
+source('../rfunctions/ordering_fun.R')
+source('../rfunctions/tpm_fun.R')
+source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+```
+
+```{r order_vec}
+
+order_vector <- c("Early.Rings",
+                  "Early.Mid.Rings",
+                  "Late.Mid.Rings",
+                  "Late.Rings",
+                  "Rings.Troph.conversion",
+                  "Early.Trophs",
+                  "Mid.Trophs",
+                  "Late.Trophs")
+```
+
+The _cir_ gene names were downloaded using a search of PlasmoDB _P. chabaudi_ genome. _cir_ genes are the names of _pir_ genes in _P chabaudi_.
+
+```{r cir_id, message=FALSE, results='hide'}
+
+# Getting the cir gene names and transcript lengths needed for calculating the transcript-per-million
+
+chabaudi_gene_info <- read.csv('../standard_files/PlasmoDB-47_beta_Pchabaudichabaudi_GenesByTaxon_Summary.csv',
+                              header = TRUE,
+                              stringsAsFactors = FALSE)
+
+chabaudi_transcript_lengths <- select(chabaudi_gene_info, c(Gene.ID, Transcript.Length)) %>% 
+  arrange(Gene.ID) %>% 
+  mutate(Geneid = Gene.ID) %>% 
+  select(Geneid, Transcript.Length)
+
+chabaudi_gene_info <- dplyr::rename(chabaudi_gene_info, 
+                             Geneid = Gene.ID,
+                             Description = Product.Description)
+
+```
+
+```{r cir_info}
+
+cir_info <- read_delim('../standard_files/Pchabaudi_pir_info.txt',
+           delim = '\t')
+cir_id <- cir_info$Geneid
+
+cir_clade_info <- read_delim('../standard_files/Pchabaudi_pir_clades.txt',
+            delim = '\t')
+```
+
+```{r times_stages_labels}
+#Use the rMT stage differential count in order to name the samples, but keep time to retain order
+times_stages_table <- data.frame(time = c('02h', '05h', '08h', '11h', '14h', '17h','20h','23h'),
+                                 stage_diff_count = c('Late-Rings',
+                                                      'Rings-Troph-conversion',
+                                                      'Early-Trophs',
+                                                      'Mid-Trophs',
+                                                      'Late-Trophs',
+                                                      'Early-Rings',
+                                                      'Early-Mid-Rings',
+                                                      'Late-Mid-Rings'))
+# R will convert the dashes to '.' at some point so let's have this notation here also
+times_stages_table$r_stage_diff_count <- str_replace_all(times_stages_table$stage_diff_count, 
+                                                         pattern = '-', 
+                                                         replacement = '\\.')
+```
+
+```{r calc_tpm}
+
+chab_count_table <- read.csv('Manuscript_Suppinfo_chabaudi_24h_counts.csv',
+                             row.names = 1)
+
+twentyfour_ct_comb <- tpm(count_data = chab_count_table, 
+                          lengths = chabaudi_transcript_lengths)
+```
+
+```{r tpm_rescale}
+
+#Setting twentyfour_tpm_ct core dataset - remove pseudogene and re-scaled
+
+twentyfour_tpm_nopseudo <- twentyfour_ct_comb %>% 
+  filter(!Geneid %in% 'PCHAS_0420800')
+
+twentyfour_tpm_rescale_nopseudo <- lapply(colnames(twentyfour_tpm_nopseudo), 
+                                          function(column_name){
+                                            column <- getElement(twentyfour_tpm_nopseudo, 
+                                                                 paste(column_name))
+                                            if(is.numeric(column)){
+                                              #is.numeric to avoid trying to scale the Geneid column
+                                              tpm_scale_factor <- 1e6 / sum(column)
+                                              tpm_scaled <- as.numeric(column*tpm_scale_factor)
+                                            }else{
+                                              tpm_scaled <- column
+                                            }
+                                            return(tpm_scaled)
+                                          }) %>% 
+  bind_cols
+
+colnames(twentyfour_tpm_rescale_nopseudo) <- colnames(twentyfour_tpm_nopseudo)
+# apply(twentyfour_tpm_rescale_nopseudo[,-1], 2, sum)
+
+#Setting the re-scaled version as the default from now on
+#Setting twentyfour_tpm_ct core dataset - removed pseudogene and re-scaled
+twentyfour_ct_comb <- twentyfour_tpm_rescale_nopseudo
+```
+
+```{r clean_up_and_average}
+# Change the names to remove superfluous 'rMT' 
+
+twentyfour_ct_comb <- rename_with(twentyfour_ct_comb, 
+                                  ~ str_extract(.x,pattern = '(?<=rMT_).+'),
+                                  matches('rMT'))
+
+twentyfour_rMT_avg <- melt(twentyfour_ct_comb, 
+                           variable.name = 'sample',
+                           value.name = 'tpm') %>% 
+  mutate(stage = str_extract(sample, pattern = '.+(?=_[[:digit:]])')) %>% 
+  group_by(Geneid, stage) %>% 
+  summarise(mean_tpm = mean(tpm)) %>% 
+  dcast(Geneid ~ stage)
+```
+
+```{r save}
+write_csv(twentyfour_rMT,
+          file = 'Pchabaudi_TPM_allBioReps.csv')
+
+write_csv(twentyfour_rMT_avg,
+          file = 'Pchabaudi_TPM_average.csv')
+```

@@ -101,6 +101,7 @@ expt_tpms <- lapply(na.omit(unique(str_extract(colnames(berghei_tpm), pattern = 
                     function(Enum){
                       df <- berghei_tpm[,str_subset(colnames(berghei_tpm), 
                                               pattern = paste0('Geneid|',Enum))]
+                      colnames(df) <- str_remove( colnames(df) ,pattern = paste0(Enum, '_'))
                       list(experiment = Enum,
                            tpm = df)
                     })

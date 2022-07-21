@@ -37,7 +37,8 @@ density_samples <- function(input,
          col = x$colouring,
          main = paste(input$experiment),
          lwd = line_width,
-         lty = lty)
+         lty = lty,
+         xlab = '')
     if(is.numeric(line_val)){
       abline(v = log1p(line_val))
     }
