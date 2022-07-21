@@ -131,15 +131,20 @@ times_stages_table$r_stage_diff_count <- str_replace_all(times_stages_table$stag
 chab_count_table <- read.csv('data/tl19-07_twentyfour_counts_samples.csv') %>% 
   select(-rMT_Unknown)
 #Calculate the TPM
-twentyfour_ct_comb <- tpm(count_data = chab_count_table, 
+chab_tpm.df <- tpm(count_data = chab_count_table, 
                           lengths = chabaudi_transcript_lengths)
+
+#Do they all sum to 1e6? Note that all.equal allows for a tiny bit of difference which is okay.
+all.equal(apply(twentyfour_ct_comb[-1], 2, sum), 
+          rep(1e6, times = dim(twentyfour_ct_comb[-1])[2]), 
+          check.names = FALSE)
 ```
 
 ```{r tpm_rescale}
 
 #Setting twentyfour_tpm_ct core dataset - remove pseudogene and re-scaled
 
-twentyfour_tpm_nopseudo <- twentyfour_ct_comb %>% 
+twentyfour_tpm_nopseudo <- chab_tpm.df %>% 
   filter(!Geneid %in% 'PCHAS_0420800')
 
 twentyfour_tpm_rescale_nopseudo <- lapply(colnames(twentyfour_tpm_nopseudo), 
@@ -162,17 +167,17 @@ colnames(twentyfour_tpm_rescale_nopseudo) <- colnames(twentyfour_tpm_nopseudo)
 
 #Setting the re-scaled version as the default from now on
 #Setting twentyfour_tpm_ct core dataset - removed pseudogene and re-scaled
-twentyfour_ct_comb <- twentyfour_tpm_rescale_nopseudo
+chab_tpm.df <- twentyfour_tpm_rescale_nopseudo
 ```
 
 ```{r clean_up_and_average}
 # Change the names to remove superfluous 'rMT' 
 
-twentyfour_ct_comb <- rename_with(twentyfour_ct_comb, 
+chab_tpm.df <- rename_with(chab_tpm.df, 
                                   ~ str_extract(.x,pattern = '(?<=rMT_).+'),
                                   matches('rMT'))
 
-twentyfour_rMT_avg <- melt(twentyfour_ct_comb, 
+twentyfour_rMT_avg <- melt(chab_tpm.df, 
                            variable.name = 'sample',
                            value.name = 'tpm') %>% 
   mutate(stage = str_extract(sample, pattern = '.+(?=_[[:digit:]])')) %>% 
