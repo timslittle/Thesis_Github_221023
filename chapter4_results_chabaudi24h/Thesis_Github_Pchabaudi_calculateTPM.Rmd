@@ -135,21 +135,49 @@ chab_tpm.df <- tpm(count_data = chab_count_table,
                           lengths = chabaudi_transcript_lengths)
 
 #Do they all sum to 1e6? Note that all.equal allows for a tiny bit of difference which is okay.
-all.equal(apply(twentyfour_ct_comb[-1], 2, sum), 
-          rep(1e6, times = dim(twentyfour_ct_comb[-1])[2]), 
+all.equal(apply(chab_tpm.df[-1], 2, sum), 
+          rep(1e6, times = dim(chab_tpm.df[-1])[2]), 
           check.names = FALSE)
 ```
 
+```{r super-pseudogene}
+
+chab_tpm_melt.df <- reshape2::melt(chab_tpm.df,
+                                   variable.name = 'sample',
+                                   value.name = 'tpm') %>% 
+  mutate(time = str_extract(sample, 
+                            pattern = '([[:digit:]]{2}h_.+|sch.culture)(?=_[[:digit:]])'),
+         transmission = str_extract(sample,
+                                    pattern = 'rMT|SBP'))
+
+(plot <- ggplot(data = filter(chab_tpm_melt.df, 
+                     Geneid %in% 'PCHAS_0420800'), 
+       aes(x = time, 
+           y = log1p(tpm),
+           fill = transmission)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "bar", width = 0.75, size = 0.25, position = 'dodge') +
+  geom_point(stat = 'identity', position = position_dodge(width = 0.75)) +
+  scale_fill_manual(values = cbPalette) +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle = 90, vjust = 0.5)))
+
+ggsave(filename = 'plots/pseudogene_tpm_barchart.png',
+       plot)
+  
+```
+
+
 ```{r tpm_rescale}
 
-#Setting twentyfour_tpm_ct core dataset - remove pseudogene and re-scaled
+#Setting chab_tpm_ct core dataset - remove pseudogene and re-scaled
 
-twentyfour_tpm_nopseudo <- chab_tpm.df %>% 
+chab_tpm_nopseudo <- chab_tpm.df %>% 
   filter(!Geneid %in% 'PCHAS_0420800')
 
-twentyfour_tpm_rescale_nopseudo <- lapply(colnames(twentyfour_tpm_nopseudo), 
+chab_tpm_rescale_nopseudo <- lapply(colnames(chab_tpm_nopseudo), 
                                           function(column_name){
-                                            column <- getElement(twentyfour_tpm_nopseudo, 
+                                            column <- getElement(chab_tpm_nopseudo, 
                                                                  paste(column_name))
                                             if(is.numeric(column)){
                                               #is.numeric to avoid trying to scale the Geneid column
@@ -162,28 +190,22 @@ twentyfour_tpm_rescale_nopseudo <- lapply(colnames(twentyfour_tpm_nopseudo),
                                           }) %>% 
   bind_cols
 
-colnames(twentyfour_tpm_rescale_nopseudo) <- colnames(twentyfour_tpm_nopseudo)
-# apply(twentyfour_tpm_rescale_nopseudo[,-1], 2, sum)
+colnames(chab_tpm_rescale_nopseudo) <- colnames(chab_tpm_nopseudo)
+# apply(chab_tpm_rescale_nopseudo[,-1], 2, sum)
 
 #Setting the re-scaled version as the default from now on
-#Setting twentyfour_tpm_ct core dataset - removed pseudogene and re-scaled
-chab_tpm.df <- twentyfour_tpm_rescale_nopseudo
+#Setting chab_tpm_ct core dataset - removed pseudogene and re-scaled
+# chab_tpm.df <- chab_tpm_rescale_nopseudo
 ```
 
 ```{r clean_up_and_average}
-# Change the names to remove superfluous 'rMT' 
-
-chab_tpm.df <- rename_with(chab_tpm.df, 
-                                  ~ str_extract(.x,pattern = '(?<=rMT_).+'),
-                                  matches('rMT'))
-
-twentyfour_rMT_avg <- melt(chab_tpm.df, 
+chab_tpm_avg.df <- reshape2::melt(chab_tpm.df, 
                            variable.name = 'sample',
                            value.name = 'tpm') %>% 
   mutate(stage = str_extract(sample, pattern = '.+(?=_[[:digit:]])')) %>% 
   group_by(Geneid, stage) %>% 
   summarise(mean_tpm = mean(tpm)) %>% 
-  dcast(Geneid ~ stage)
+  reshape2::dcast(Geneid ~ stage)
 ```
 
 ```{r save}
