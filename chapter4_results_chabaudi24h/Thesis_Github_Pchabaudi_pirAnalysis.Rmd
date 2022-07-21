@@ -33,6 +33,7 @@ library('viridis')
 library('reshape2')
 library('ComplexHeatmap')
 library('circlize') # for circular plots and colour
+library("factoextra")
 
 # library('DESeq2')
 # library("pheatmap")
@@ -251,7 +252,7 @@ combined_data_pir_ht_list <- lapply(names(chab_tpm_avg.list),
          
          #Change the colnames to the times
          colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
-                                                                           pattern = '[[:digit:]]{2}h')
+                                                                           pattern = '[[:digit:]]{2}h|sch.culture')
          
          #Order by time point
          combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
@@ -296,17 +297,12 @@ lapply(names(combined_data_pir_ht_list),
          #Subfamily annotation
          
          clade_ha <- rowAnnotation(
-           'sub-family' = anno_simple(
+           'sub-fam' = anno_simple(
              clade_info,
              col = annotation_col,
            ),
            annotation_name_gp = gpar(fontsize = 10)
          )
-         
-         anc_ha <- rowAnnotation(foo = anno_mark(at =  na.omit(match(clade_info, 'ancestral')) , 
-                                                 labels = 'ancestral',
-                                                 labels_gp = gpar(fontsize = 7),
-                                                 link_width = unit(3, "mm")))
          
          #lapply across the datasets now, for each order
          ht_list <- lapply(names(combined_data_pir_ht_list),
@@ -318,7 +314,7 @@ lapply(names(combined_data_pir_ht_list),
                              
                              #Get the times instead of the stage names.
                              colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
-                                                                           pattern = '[[:digit:]]{2}h')
+                                                                           pattern = '[[:digit:]]{2}h|sch.culture')
                              
                              combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
                                                                           drop = FALSE] 
@@ -352,15 +348,6 @@ lapply(names(combined_data_pir_ht_list),
                                }else{
                                  NULL
                                },
-                               right_annotation = if(
-                                 list_name %in% dplyr::last(names(combined_data_pir_ht_list))
-                               ){
-                                 anc_ha
-                               }else{
-                                 NULL
-                               },
-                               # row_split =  cir_info$SorL[match(pir_highest_tpm_order, 
-                               #                                        cir_info$Geneid)],
                                column_title = paste(list_name),
                                heatmap_legend_param = list(
                                  labels_gp = gpar(fontsize = 10),
@@ -377,13 +364,15 @@ lapply(names(combined_data_pir_ht_list),
          )
          ht_list <- Reduce(`+`, ht_list)
          clade_lgd <- Legend(
-           title = 'sub-family',
+           title = 'sub-fam',
            at = labels_SorL,
            legend_gp = gpar(fill = SorL_col)
          )
          
          if(global_save_var){        
-           pdf('Manuscript_figure3c_heatmap.pdf'
+           pdf(paste0('plots/Heatmap_pir_RMT-SBP_',
+                      list_name_to_order,
+                      'order.pdf')
                , width = 10
                , height = 4
            )
@@ -406,8 +395,8 @@ lapply(names(combined_data_pir_ht_list),
                 annotation_legend_side = 'right',
                 annotation_legend_list = list(clade_lgd),
                 ht_gap = unit(.35,'cm'),
-                merge_legend = TRUE
-           ))
+                merge_legend = TRUE)
+         )
        })
 
 ```
@@ -415,41 +404,44 @@ lapply(names(combined_data_pir_ht_list),
 ## 2D plot of PC1 v PC2 - Supp figure 4A
 
 ```{r pca_calculation, results = TRUE}
-twentyfour_tpm <- twentyfour_rMT
-rownames_geneid <- twentyfour_tpm$Geneid
-twentyfour_tpm_forpca <- select(twentyfour_tpm, -Geneid)
-rownames(twentyfour_tpm_forpca) <- rownames_geneid
-twentyfour_tpm_pca <- prcomp(twentyfour_tpm_forpca, center = TRUE, scale. = TRUE)
+rownames_geneid <- chab_tpm.df$Geneid
+chab_tpm.df_forpca <- data.frame(select(chab_tpm.df, -Geneid))
+rownames(chab_tpm.df_forpca) <- rownames_geneid
+chab_tpm.df_pca <- prcomp(chab_tpm.df_forpca, 
+                              center = TRUE, 
+                              scale. = TRUE)
 #Need to look into what exactly scale and center are doing
 ```
 
 ```{r 2d_pca, results = TRUE}
-twentyfour_tpm_pca_var <- get_pca_var(twentyfour_tpm_pca)
-twentyfour_tpm_pca_coords <- data.frame(twentyfour_tpm_pca_var$coord)
+chab_tpm.df_pca_var <- get_pca_var(chab_tpm.df_pca)
+chab_tpm.df_pca_coords <- data.frame(chab_tpm.df_pca_var$coord)
 
-twentyfour_tpm_pca_coords <- data.frame(sample = rownames(twentyfour_tpm_pca_var$coord),
-                                        PC1 = twentyfour_tpm_pca_coords$Dim.1,
-                                        PC3 = twentyfour_tpm_pca_coords$Dim.3,
-                                        PC2 = twentyfour_tpm_pca_coords$Dim.2) %>% 
+chab_tpm.df_pca_coords <- data.frame(sample = rownames(chab_tpm.df_pca_var$coord),
+                                        PC1 = chab_tpm.df_pca_coords$Dim.1,
+                                        PC3 = chab_tpm.df_pca_coords$Dim.3,
+                                        PC2 = chab_tpm.df_pca_coords$Dim.2) %>% 
   dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
-  dplyr::mutate(time = str_split_fixed(stage, pattern = '_', n = 2)[,1]) 
+  mutate( transmission = str_split_fixed(stage, pattern = '_', n = 2)[,1],
+          time = str_extract(stage,pattern = '[[:digit:]]{1,2}h|sch.culture')) 
 
-colornames <- viridis(length(unique(twentyfour_tpm_pca_coords$time)))
+colornames <- viridis(length(unique(chab_tpm.df_pca_coords$time)))
 colornames <- setNames(colornames, 
-                       sort(unique(twentyfour_tpm_pca_coords$time)))
+                       sort(unique(chab_tpm.df_pca_coords$time)))
 
 
-pca_importance <- as.data.frame(summary(twentyfour_tpm_pca)$importance)
+pca_importance <- as.data.frame(summary(chab_tpm.df_pca)$importance)
 pc1_importance <- round(pca_importance$PC1[2]*100, digits = 1)
 pc2_importance <- round(pca_importance$PC2[2]*100, digits = 1)
 pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
 
 (
-  plot <- ggplot(twentyfour_tpm_pca_coords,
+  plot <- ggplot(chab_tpm.df_pca_coords,
                  aes(
                    x = PC1,
                    y = PC2,
-                   col = time
+                   col = time,
+                   shape = transmission
                  )) +
     geom_point(size = 3,
                alpha = 0.8) +
@@ -477,12 +469,13 @@ if(global_save_var){
 # Bar chart of ancestral _pir_ expression.
 
 ```{r}
-  cir_plot <- twentyfour_rMT %>% 
+  cir_plot <- chab_tpm.df %>% 
     filter(Geneid %in% 'PCHAS_0101200') %>% 
     melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
     # mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>%
-    mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h')) %>% 
-    group_by(sample, time) %>% 
+    mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
+           transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1]) %>% 
+    group_by(sample, time, transmission) %>% 
     dplyr::summarise(sum_tpm = sum(tpm))
 
 y_scale <- seq(0, 
@@ -493,10 +486,10 @@ y_scale <- seq(0,
 (
   p <- ggplot(data = cir_plot, 
               aes(x = time, 
-                  y = sum_tpm)) +
+                  y = sum_tpm,
+                  fill = transmission)) +
     stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
-                 geom = "bar", width = 0.75, size = 0.25, position = 'dodge',
-                 fill = 'lightblue') +
+                 geom = "bar", width = 0.75, size = 0.25, position = 'dodge') +
     scale_y_continuous(breaks = y_scale) +
     geom_point(stat = 'identity', position = position_dodge(width = 0.75)) +
     ylab(as.expression(bquote('Total'~italic(.('PCHAS_0101200'))~'TPM'))) +
