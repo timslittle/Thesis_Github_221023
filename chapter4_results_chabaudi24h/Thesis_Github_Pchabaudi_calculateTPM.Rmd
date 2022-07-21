@@ -50,7 +50,7 @@ library('viridis')
 
 #Colour blind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
-show_col(cbPalette)
+#show_col(cbPalette)
 
 #Want the defaults for arrange, mutate and summarise to be from dplyr
 arrange <- dplyr::arrange
@@ -127,10 +127,10 @@ times_stages_table$r_stage_diff_count <- str_replace_all(times_stages_table$stag
 ```
 
 ```{r calc_tpm}
-
-chab_count_table <- read.csv('Manuscript_Suppinfo_chabaudi_24h_counts.csv',
-                             row.names = 1)
-
+#Read in the count data and remove one sample which is unknown and had no description.
+chab_count_table <- read.csv('data/tl19-07_twentyfour_counts_samples.csv') %>% 
+  select(-rMT_Unknown)
+#Calculate the TPM
 twentyfour_ct_comb <- tpm(count_data = chab_count_table, 
                           lengths = chabaudi_transcript_lengths)
 ```
