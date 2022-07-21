@@ -302,7 +302,7 @@ colnames(chab_tpm_rescale_nopseudo) <- colnames(chab_tpm_nopseudo)
 ```
 
 ```{r clean_up_and_average}
-chab_tpm_avg.df <- reshape2::melt(chab_tpm.df, 
+chab_tpm_avg_nopseudo.df <- reshape2::melt(chab_tpm_rescale_nopseudo, 
                            variable.name = 'sample',
                            value.name = 'tpm') %>% 
   mutate(stage = str_extract(sample, pattern = '.+(?=_[[:digit:]])')) %>% 
@@ -312,9 +312,12 @@ chab_tpm_avg.df <- reshape2::melt(chab_tpm.df,
 ```
 
 ```{r save}
-write_csv(twentyfour_rMT,
-          file = 'Pchabaudi_TPM_allBioReps.csv')
+write_csv(chab_tpm.df,
+          file = 'data/Pchabaudi_TPM_all_withPseudo.csv')
 
-write_csv(twentyfour_rMT_avg,
-          file = 'Pchabaudi_TPM_average.csv')
+write_csv(chab_tpm_rescale_nopseudo,
+          file = 'data/Pchabaudi_TPM_all.csv')
+
+write_csv(chab_tpm_avg_nopseudo.df,
+          file = 'data/Pchabaudi_TPM_average.csv')
 ```
