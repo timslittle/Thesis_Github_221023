@@ -444,7 +444,8 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
            col = guide_legend(ncol=2)) +
     theme_classic() +
     theme(legend.key.size = unit(4, 'mm'),
-          legend.text = element_text(size = 7))
+          legend.text = element_text(size = 7)) +
+    ggtitle('PCA without RMT-high pseudogene')
 )
 
 # (
@@ -468,7 +469,7 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
 # )
 
 if(global_save_var){
-  ggsave2(filename = 'plots/pca_nopseudo.png',
+  ggsave(filename = 'plots/pca_nopseudo.png',
           plot = plot,
           dpi = 300,
           width = 15,
@@ -526,7 +527,8 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
            col = guide_legend(ncol=2)) +
     theme_classic() +
     theme(legend.key.size = unit(4, 'mm'),
-          legend.text = element_text(size = 7))
+          legend.text = element_text(size = 7)) +
+    ggtitle('PCA with all genes')
 )
 
 if(global_save_var){
