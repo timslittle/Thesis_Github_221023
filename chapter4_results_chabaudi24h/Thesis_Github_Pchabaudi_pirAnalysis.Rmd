@@ -288,10 +288,8 @@ lapply(names(combined_data_pir_ht_list),
          pir_highest_tpm_order <- rownames(combined_data_pir_ht)
          
          #Sub-family annotation
-         clade_info <- combined_data_pir_ht
-                  #Add a column for the SorL
-         combined_data_pir_ht$SorL <- cir_info$SorL[match(rownames(combined_data_pir_ht), 
-                                                                cir_info$Geneid)]
+         clade_info <- cir_info$SorL[match(rownames(combined_data_pir_ht), 
+                                                          cir_info$Geneid)]
          annotation_col <- SorL_col
          
          #Subfamily annotation
@@ -311,12 +309,10 @@ lapply(names(combined_data_pir_ht_list),
                              combined_data_pir_ht <- getElement(combined_data_pir_ht_list, 
                                                                 list_name)
                              
-                             #Get the times instead of the stage names.
-                             colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
-                                                                           pattern = '[[:digit:]]{2}h|sch.culture')
-                             
-                             combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
-                                                                          drop = FALSE] 
+                             combined_data_pir_ht <- combined_data_pir_ht[
+                               ,order(colnames(combined_data_pir_ht)),
+                               drop = FALSE
+                             ] 
                              
                              
                              Heatmap(
@@ -472,7 +468,7 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
 # )
 
 if(global_save_var){
-  ggsave2(filename = 'Manuscript_SuppFigure3_chabaudi24h_pca_nopseudo.png',
+  ggsave2(filename = 'plots/pca_nopseudo.png',
           plot = plot,
           dpi = 300,
           width = 15,
@@ -534,7 +530,7 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
 )
 
 if(global_save_var){
-  ggsave2(filename = 'Manuscript_SuppFigure3_chabaudi24h_pca_wPseudo.png',
+  ggsave(filename = 'plots/pca_wPseudo.png',
           plot = plot,
           dpi = 300,
           width = 15,
