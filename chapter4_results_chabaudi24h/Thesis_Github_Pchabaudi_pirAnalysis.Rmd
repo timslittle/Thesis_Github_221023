@@ -221,22 +221,20 @@ labels_SorL <- setNames(paste0(num_SorL$SorL, ' (n = ', num_SorL$num, ')'),
 combined_data_pir_ht_list <- lapply(names(chab_tpm_avg.list), 
        function(list_name){
          
-         combined_data_pir <- getElement(twentyfour_avgtpm, 
+         combined_data_pir <- getElement(chab_tpm_avg.list, 
                                      list_name)$tpm %>% 
            filter(Geneid %in% cir_id) %>% 
            column_to_rownames(var = 'Geneid')
-         
-         #Ordering that a more understandable order
-         
-         combined_data_pir <- combined_data_pir[,c(ordering(colnames(combined_data_pir)[-1], 
-                                                            order_vector)),
-                                                drop = FALSE]
-         
+
+         #Calculate the means, then arrange by mean tpm and sub-family, 
+         # then get the Geneid list from this
          combined_data_ordered <- tibble(Geneid = names(apply(combined_data_pir, 1, mean)),
                                          means = apply(combined_data_pir, 1, mean),
-                                         subfam = cir_info$SorL[match(names(apply(combined_data_pir, 1, mean)), 
-                                                                            cir_info$Geneid)]) %>% 
-           filter(means > 1) %>% 
+                                         subfam = cir_info$SorL[
+                                           match(names(apply(combined_data_pir, 1, mean)), 
+                                                 cir_info$Geneid)
+                                         ]) %>% 
+           # filter(means > 1) %>% 
            arrange(subfam, 
                    desc(means)) %>% 
            .$Geneid
@@ -252,19 +250,18 @@ combined_data_pir_ht_list <- lapply(names(chab_tpm_avg.list),
          
          #Change the colnames to the times
          colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
-                                                                           pattern = '[[:digit:]]{2}h|sch.culture')
+                                                       pattern = '[[:digit:]]{2}h|sch.culture')
          
          #Order by time point
          combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
                                                       drop = FALSE] 
-         #Add a column for the SorL
-         combined_data_pir_ht$SorL <- cir_info$SorL[match(names(apply(combined_data_pir_ht, 1, mean)), 
-                                                                cir_info$Geneid)]
          
          return(combined_data_pir_ht)
        })
-names(combined_data_pir_ht_list) <- names(twentyfour_avgtpm)
+names(combined_data_pir_ht_list) <- names(chab_tpm_avg.list)
+```
 
+```{r heatmap}
 #Need to reach into the data to find the maximum value of the log(TPM+1) for 
 # the colouring in order to maintain consistency.
 
@@ -274,7 +271,7 @@ maxcol <- ceiling(
       lapply(combined_data_pir_ht_list,
              function(list_element){
                max(
-                 log2(1+list_element[!colnames(list_element) %in% 'SorL'])
+                 log2(1+list_element)
                )
              }
       )
@@ -291,7 +288,10 @@ lapply(names(combined_data_pir_ht_list),
          pir_highest_tpm_order <- rownames(combined_data_pir_ht)
          
          #Sub-family annotation
-         clade_info <- combined_data_pir_ht$SorL
+         clade_info <- combined_data_pir_ht
+                  #Add a column for the SorL
+         combined_data_pir_ht$SorL <- cir_info$SorL[match(rownames(combined_data_pir_ht), 
+                                                                cir_info$Geneid)]
          annotation_col <- SorL_col
          
          #Subfamily annotation
@@ -308,9 +308,8 @@ lapply(names(combined_data_pir_ht_list),
          ht_list <- lapply(names(combined_data_pir_ht_list),
                            function(list_name){
                              
-                             combined_data_pir_ht <- getElement(twentyfour_avgtpm, 
-                                                                list_name)$tpm %>% 
-                               column_to_rownames(var = 'Geneid')
+                             combined_data_pir_ht <- getElement(combined_data_pir_ht_list, 
+                                                                list_name)
                              
                              #Get the times instead of the stage names.
                              colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
@@ -403,17 +402,14 @@ lapply(names(combined_data_pir_ht_list),
 
 ## 2D plot of PC1 v PC2 - Supp figure 4A
 
-```{r pca_calculation, results = TRUE}
+```{r pca_plot, results = TRUE}
 rownames_geneid <- chab_tpm.df$Geneid
 chab_tpm.df_forpca <- data.frame(select(chab_tpm.df, -Geneid))
 rownames(chab_tpm.df_forpca) <- rownames_geneid
 chab_tpm.df_pca <- prcomp(chab_tpm.df_forpca, 
                               center = TRUE, 
                               scale. = TRUE)
-#Need to look into what exactly scale and center are doing
-```
 
-```{r 2d_pca, results = TRUE}
 chab_tpm.df_pca_var <- get_pca_var(chab_tpm.df_pca)
 chab_tpm.df_pca_coords <- data.frame(chab_tpm.df_pca_var$coord)
 
@@ -485,6 +481,68 @@ if(global_save_var){
 }
 
 ```
+
+```{r pca_plot_withPseudogene}
+chab_tpm_wPseudo.df <- read_csv('data/Pchabaudi_TPM_all_withPseudo.csv')
+
+rownames_geneid <- chab_tpm_wPseudo.df$Geneid
+chab_tpm_wPseudo.df_forpca <- data.frame(select(chab_tpm_wPseudo.df, -Geneid))
+rownames(chab_tpm_wPseudo.df_forpca) <- rownames_geneid
+chab_tpm_wPseudo.df_pca <- prcomp(chab_tpm_wPseudo.df_forpca, 
+                              center = TRUE, 
+                              scale. = TRUE)
+
+chab_tpm_wPseudo.df_pca_var <- get_pca_var(chab_tpm_wPseudo.df_pca)
+chab_tpm_wPseudo.df_pca_coords <- data.frame(chab_tpm_wPseudo.df_pca_var$coord)
+
+chab_tpm_wPseudo.df_pca_coords <- data.frame(sample = rownames(chab_tpm_wPseudo.df_pca_var$coord),
+                                        PC1 = chab_tpm_wPseudo.df_pca_coords$Dim.1,
+                                        PC3 = chab_tpm_wPseudo.df_pca_coords$Dim.3,
+                                        PC2 = chab_tpm_wPseudo.df_pca_coords$Dim.2) %>% 
+  dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
+  mutate( transmission = str_split_fixed(stage, pattern = '_', n = 2)[,1],
+          time = str_extract(stage,pattern = '[[:digit:]]{1,2}h|sch.culture')) 
+
+colornames <- viridis(length(unique(chab_tpm_wPseudo.df_pca_coords$time)))
+colornames <- setNames(colornames, 
+                       sort(unique(chab_tpm_wPseudo.df_pca_coords$time)))
+
+
+pca_importance <- as.data.frame(summary(chab_tpm_wPseudo.df_pca)$importance)
+pc1_importance <- round(pca_importance$PC1[2]*100, digits = 1)
+pc2_importance <- round(pca_importance$PC2[2]*100, digits = 1)
+pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
+
+(
+  plot <- ggplot(chab_tpm_wPseudo.df_pca_coords,
+                 aes(
+                   x = PC1,
+                   y = PC2,
+                   col = time,
+                   shape = transmission
+                 )) +
+    geom_point(size = 3,
+               alpha = 0.8) +
+    scale_color_manual(values = colornames) +
+    xlab(paste0('PC1 ', round(pca_importance$PC1[2]*100, digits = 1),'%')) +
+    ylab(paste0('PC2 ', round(pca_importance$PC2[2]*100, digits = 1),'%')) +
+    guides(shape=guide_legend(ncol=2),
+           col = guide_legend(ncol=2)) +
+    theme_classic() +
+    theme(legend.key.size = unit(4, 'mm'),
+          legend.text = element_text(size = 7))
+)
+
+if(global_save_var){
+  ggsave2(filename = 'Manuscript_SuppFigure3_chabaudi24h_pca_wPseudo.png',
+          plot = plot,
+          dpi = 300,
+          width = 15,
+          height = 10,
+          units = 'cm')
+}
+```
+
 
 # Bar chart of ancestral _pir_ expression.
 
