@@ -567,17 +567,18 @@ y_scale <- seq(0,
     stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
                  geom = "bar", width = 0.75, size = 0.25, position = 'dodge') +
     scale_y_continuous(breaks = y_scale) +
+    scale_fill_manual(values = cbPalette) +
     geom_point(stat = 'identity', position = position_dodge(width = 0.75)) +
-    ylab(as.expression(bquote('Total'~italic(.('PCHAS_0101200'))~'TPM'))) +
+    ylab(as.expression(bquote('Total ancestral '~italic(.('pir'))~'TPM'))) +
     xlab('Asexual blood stage development cycle') +
     theme_classic() +
     theme(axis.text.x=element_text(angle = 0, 
                                    vjust = 0.5,
-                                   size = 13))
+                                   size = 10))
 )
 
 if(global_save_var){
-  ggsave2(filename = 'Manuscript_ancestralPir_BarChart.pdf',
+  ggsave(filename = 'plots/ancestralPir_BarChart.pdf',
           plot = p,
           dpi = 300,
           width = 15,

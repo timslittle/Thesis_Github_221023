@@ -266,8 +266,12 @@ chab_tpm_melt.df <- reshape2::melt(chab_tpm.df,
   theme(axis.text.x=element_text(angle = 90, vjust = 0.5)))
 
 ggsave(filename = 'plots/pseudogene_tpm_barchart.png',
-       plot)
-  
+       plot,
+       dpi = 300,
+       width = 15,
+       height = 6,
+       units = 'cm')
+
 ```
 
 
