@@ -650,9 +650,25 @@ tpm_to_zscore = function(input){
               experiment = input$experiment))
 }
 
+#Remove schizont culture from this as we are interested in z-scores
+# across the 24h cycle and schizont will distort this and don't fit into comparison.
+chab_tpm_avg_forZ.df <- select(chab_tpm_avg.df, 
+                               -rMT_sch.culture)
+chab_tpm_avg_forZ.list <- lapply(c('rMT', 'SBP'), 
+                                 function(transmission){
+                                   #Subset for the Geneid column and either rMT or SBP
+                                   tpm.df <- chab_tpm_avg_forZ.df[
+                                     ,
+                                     grepl(colnames(chab_tpm_avg_forZ.df), 
+                                           pattern = paste0('Geneid|', transmission))
+                                   ]
+                                   list(tpm = tpm.df,
+                                        experiment = transmission)
+                                 })
+
 #Make and save z-scores
-twentyfour_z <- lapply(twentyfour_avgtpm,
-                       tpm_to_zscore)
+chab_z.list <- lapply(chab_tpm_avg_forZ.list,
+                      tpm_to_zscore)
 
 ###
 ```
@@ -663,7 +679,7 @@ twentyfour_z <- lapply(twentyfour_avgtpm,
 
 #Getting the row order for each phaseogram for each experiment
 # Want the data ordered by the highest zscore for each gene in each stage.
-phaseogram_row_order <- lapply(twentyfour_z, 
+phaseogram_row_order <- lapply(chab_z.list, 
                                function(list_elements){
                                  zscore_df <- list_elements$zscores
                                  zscore_ordered <- melt(zscore_df, 
@@ -1016,7 +1032,7 @@ if(global_save_var){
   pdf(file = 'Manuscript_SuppFig5_phaseogram_allgenes.pdf',
       height = 5,
       width = 5)
-  draw_heatmap_zscore(zscore_list = twentyfour_z,
+  draw_heatmap_zscore(zscore_list = chab_z.list,
                       gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
                       use_times = TRUE,
                       use_order_vector = FALSE,
@@ -1025,7 +1041,7 @@ if(global_save_var){
   dev.off()
 }
 
-draw_heatmap_zscore(zscore_list = twentyfour_z,
+draw_heatmap_zscore(zscore_list = chab_z.list,
                     gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
                     use_times = TRUE,
                     use_order_vector = FALSE,
@@ -1037,7 +1053,7 @@ draw_heatmap_zscore(zscore_list = twentyfour_z,
 ##  Supplementary figure 6 - Phaseograms of the _cir_ genes with clade annotations
 
 ```{r pir_gene_phaseogram_breaks}
-  max_tpm <- lapply(twentyfour_z, 
+  max_tpm <- lapply(chab_z.list, 
                     function(list_element){
                       #list_element <- zscore_list[[1]]
                       heatmap_data <- as.data.frame(list_element$zscores)
@@ -1113,7 +1129,7 @@ if(global_save_var){
  pdf(file = 'Manuscript_SuppFig6_phaseogram_cirgenes.pdf',
       height = 5,
       width = 5)
-  draw_heatmap_zscore(zscore_list = twentyfour_z,
+  draw_heatmap_zscore(zscore_list = chab_z.list,
                       gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
                       filter_genes_vector = cir_id,
                       annotation_clade = 'SorL',
@@ -1126,7 +1142,7 @@ if(global_save_var){
   dev.off()
 }
 
-draw_heatmap_zscore(zscore_list = twentyfour_z,
+draw_heatmap_zscore(zscore_list = chab_z.list,
                     gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
                     filter_genes_vector = cir_id,
                     annotation_clade = 'SorL',
