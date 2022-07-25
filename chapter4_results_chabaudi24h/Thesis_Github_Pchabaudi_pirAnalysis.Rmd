@@ -986,7 +986,7 @@ draw_heatmap_zscore <- function(zscore_list,
                                    cluster_rows = FALSE,
                                    column_title = paste(title),
                                    heatmap_legend_param = list(
-                                     at = c(3,2,1,0,-1,-2,-3),
+                                     at = rev(c(3,2,1,0,-1,-2,-3)),
                                      labels_gp = gpar(fontsize = 10),
                                      title_gp = gpar(fontsize = 10)
                                    ),
@@ -1038,7 +1038,7 @@ draw_heatmap_zscore <- function(zscore_list,
 if(global_save_var){
   pdf(file = 'plots/phaseogram_allgenes_rMTorder.pdf',
       height = 5,
-      width = 5)
+      width = 7)
   draw_heatmap_zscore(zscore_list = chab_z.list,
                       gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
                       use_times = TRUE,
@@ -1051,7 +1051,7 @@ if(global_save_var){
 if(global_save_var){
   pdf(file = 'plots/phaseogram_allgenes_SBPorder.pdf',
       height = 5,
-      width = 5)
+      width = 7)
 draw_heatmap_zscore(zscore_list = chab_z.list,
                     gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
                     use_times = TRUE,
@@ -1156,23 +1156,39 @@ if(global_save_var){
 }
 
 if(global_save_var){
- pdf(file = 'plots/phaseogram_pirgenes_SBPorder.pdf',
+  pdf(file = 'plots/phaseogram_pirgenes_SBPorder.pdf',
       height = 5,
       width = 5)
-draw_heatmap_zscore(zscore_list = chab_z.list,
-                    gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
-                    filter_genes_vector = cir_id,
-                    annotation_clade = 'SorL',
-                    annotation_col = SorL_col,
-                    threshold_tpm = 1,
-                    use_times = TRUE,
-                    use_order_vector = FALSE,
-                    show_row_names = FALSE,
-                    tpm_mat = TRUE)
+  draw_heatmap_zscore(zscore_list = chab_z.list,
+                      gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
+                      filter_genes_vector = cir_id,
+                      annotation_clade = 'SorL',
+                      annotation_col = SorL_col,
+                      threshold_tpm = 1,
+                      use_times = TRUE,
+                      use_order_vector = FALSE,
+                      show_row_names = FALSE,
+                      tpm_mat = TRUE)
   dev.off()
 }
 
 ```
+
+```{r zscore_save}
+chab_z.df <- inner_join(chab_z.list[[1]]$zscores, 
+                        chab_z.list[[2]]$zscores, 
+                        by = 'Geneid')
+write.csv(chab_z.df,
+          file = 'data/Pchabaudi_z.csv',
+          row.names = FALSE)
+write.table(x = phaseogram_time_order$rMT$zscore_order$Geneid,
+            file = 'data/Pchabaudi_z_phaseOrder_rMT.list',
+            row.names = FALSE, col.names = FALSE)
+write.table(x = phaseogram_time_order$SBP$zscore_order$Geneid,
+            file = 'data/Pchabaudi_z_phaseOrder_SBP.list',
+            row.names = FALSE, col.names = FALSE)
+```
+
 
 ## Figure 4 and supplementary figure 7
 
