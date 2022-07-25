@@ -1189,6 +1189,47 @@ write.table(x = phaseogram_time_order$SBP$zscore_order$Geneid,
             row.names = FALSE, col.names = FALSE)
 ```
 
+```{r gene_sync}
+
+#Which genes are out of sync between rMT and SBP?
+head(chab_z.list[[1]]$zscores[,-1])
+
+#Melt the z-score dataframe into long form, then slice out the maximum z-score value.
+# Filter out any gene which has multiple max values for simplicity.
+# Summarise this with the numbers that each stage (the max stage) corresponds to.
+
+z_max <- lapply(chab_z.list, function(x) {
+  x$zscores %>% 
+  reshape2::melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'zscore') %>% 
+  group_by(Geneid) %>% 
+  slice_max(order_by = zscore, n = 1) %>% 
+  filter(n() == 1) %>% 
+  summarise(sample_max = times_stages_table$num[
+    str_detect(sample, 
+               times_stages_table$time)
+    ])
+})
+
+#Bind the two together with inner_join so that it only includes genes in both.
+# Then calculate the peak difference by subtracting the difference between the sample numbers.
+# Since this is a cycle, no point of the cycle is theoretically 
+#  more than 4 time points away from the next one. 
+#  e.g. 23h and 02h (8 and 1) are only 1 time point apart.
+#Hence we subtract values above four from eight
+z_max_diff <- inner_join(z_max[[1]], z_max[[2]], by = 'Geneid') %>% 
+  mutate(diff = ifelse(abs(sample_max.x - sample_max.y) > 4,
+                       8 - abs(sample_max.x - sample_max.y),
+                       abs(sample_max.x - sample_max.y)))
+
+#Probably unnecessarily complicated code to make a barplot of how many genes 
+# are peaking at different timepoints between rMT and SBP
+barplot(group_by(z_max_diff, diff) %>% summarise(total = n()) %>% .$total,
+        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
+
+```
+
 
 ## Figure 4 and supplementary figure 7
 
