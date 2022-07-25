@@ -847,9 +847,6 @@ draw_heatmap_zscore <- function(zscore_list,
     }else{
       filter_genes_vector <- filter_genes_vector[!filter_genes_vector %in% remove_genes]
     }
-    
-    
-    
   }
   
   if(is.character(annotation_clade)){
@@ -1039,7 +1036,7 @@ draw_heatmap_zscore <- function(zscore_list,
 
 ```{r phaseograms_whole_genome}
 if(global_save_var){
-  pdf(file = 'Manuscript_SuppFig5_phaseogram_allgenes.pdf',
+  pdf(file = 'plots/phaseogram_allgenes_rMTorder.pdf',
       height = 5,
       width = 5)
   draw_heatmap_zscore(zscore_list = chab_z.list,
@@ -1047,7 +1044,7 @@ if(global_save_var){
                       use_times = TRUE,
                       use_order_vector = FALSE,
                       show_row_names = FALSE,
-                      tpm_mat = FALSE)
+                      tpm_mat = TRUE)
   dev.off()
 }
 
@@ -1140,7 +1137,7 @@ if(global_save_var){
       height = 5,
       width = 5)
   draw_heatmap_zscore(zscore_list = chab_z.list,
-                      gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
+                      gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
                       filter_genes_vector = cir_id,
                       annotation_clade = 'SorL',
                       annotation_col = SorL_col,
@@ -1153,7 +1150,7 @@ if(global_save_var){
 }
 
 draw_heatmap_zscore(zscore_list = chab_z.list,
-                    gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
+                    gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
                     filter_genes_vector = cir_id,
                     annotation_clade = 'SorL',
                     annotation_col = SorL_col,
@@ -1161,7 +1158,7 @@ draw_heatmap_zscore(zscore_list = chab_z.list,
                     use_times = TRUE,
                     use_order_vector = FALSE,
                     show_row_names = FALSE,
-                    tpm_mat = FALSE)
+                    tpm_mat = TRUE)
 
 ```
 
