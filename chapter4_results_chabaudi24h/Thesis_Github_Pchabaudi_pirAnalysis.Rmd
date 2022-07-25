@@ -1048,12 +1048,18 @@ if(global_save_var){
   dev.off()
 }
 
+if(global_save_var){
+  pdf(file = 'plots/phaseogram_allgenes_SBPorder.pdf',
+      height = 5,
+      width = 5)
 draw_heatmap_zscore(zscore_list = chab_z.list,
                     gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
                     use_times = TRUE,
                     use_order_vector = FALSE,
                     show_row_names = FALSE,
                     tpm_mat = TRUE)
+  dev.off()
+}
 
 ```
 
@@ -1133,7 +1139,7 @@ draw_heatmap_zscore(zscore_list = chab_z.list,
 ```{r phaseograms_cir}
 
 if(global_save_var){
- pdf(file = 'Manuscript_SuppFig6_phaseogram_cirgenes.pdf',
+ pdf(file = 'plots/phaseogram_pirgenes_rMTorder.pdf',
       height = 5,
       width = 5)
   draw_heatmap_zscore(zscore_list = chab_z.list,
@@ -1149,6 +1155,10 @@ if(global_save_var){
   dev.off()
 }
 
+if(global_save_var){
+ pdf(file = 'plots/phaseogram_pirgenes_SBPorder.pdf',
+      height = 5,
+      width = 5)
 draw_heatmap_zscore(zscore_list = chab_z.list,
                     gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
                     filter_genes_vector = cir_id,
@@ -1159,6 +1169,8 @@ draw_heatmap_zscore(zscore_list = chab_z.list,
                     use_order_vector = FALSE,
                     show_row_names = FALSE,
                     tpm_mat = TRUE)
+  dev.off()
+}
 
 ```
 
