@@ -34,6 +34,7 @@ library('reshape2')
 library('ComplexHeatmap')
 library('circlize') # for circular plots and colour
 library("factoextra")
+library("MatrixGenerics") # for rowMins and rowMax
 
 # library('DESeq2')
 # library("pheatmap")
@@ -703,13 +704,15 @@ phaseogram_row_order <- lapply(chab_z.list,
                                           list(zscore_order = zscore_ordered)))
                                })
 
+names(phaseogram_row_order) <- c('rMT', 'SBP')
+
 phaseogram_time_order <- lapply(names(phaseogram_row_order), 
                                 function(list_element){
                                   transmission_list <- getElement(phaseogram_row_order,
                                                                   list_element)
                                   order_by_time <- transmission_list$zscore_order %>% 
-                                    mutate(stage = times_stages_table$time[match(stage,
-                                                                                 times_stages_table$r_stage_diff_count)]) %>% 
+                                    mutate(stage = str_extract(stage,
+                                                               pattern = '[[:digit:]]{2}h')) %>% 
                                     arrange(stage)
                                   return(list(zscore_order = order_by_time))
                                 }
@@ -838,7 +841,14 @@ draw_heatmap_zscore <- function(zscore_list,
       }
     )]
     
-    filter_genes_vector <- filter_genes_vector[!filter_genes_vector %in% remove_genes]
+    #Set the filter_genes_vector as the genes to remove if it doesn't already exist.
+    if(is.null(filter_genes_vector)){
+      filter_genes_vector <- remove_genes
+    }else{
+      filter_genes_vector <- filter_genes_vector[!filter_genes_vector %in% remove_genes]
+    }
+    
+    
     
   }
   
@@ -889,14 +899,14 @@ draw_heatmap_zscore <- function(zscore_list,
                        
                        if(tpm_mat){
                          #Get max/min TPM scores for the side annotation heatmap                       
-                         tpm_mat <- list_element$tpm[match(rownames(heatmap_data),
+                         tpm_mat.mat <- list_element$tpm[match(rownames(heatmap_data),
                                                            list_element$tpm$Geneid),] %>%
                            select(-Geneid) %>% 
                            as.matrix %>% 
                            log1p
                          
-                         tpm_min <- rowMins(tpm_mat)
-                         tpm_max <- rowMaxs(tpm_mat)
+                         tpm_min <- rowMins(tpm_mat.mat)
+                         tpm_max <- rowMaxs(tpm_mat.mat)
                          
                          names(tpm_min) = rownames(heatmap_data)
                          names(tpm_max) = rownames(heatmap_data)
@@ -905,14 +915,14 @@ draw_heatmap_zscore <- function(zscore_list,
                            min.max = anno_simple(cbind(tpm_min, 
                                                        tpm_max), 
                                                  col = tpm_col_fun,
-                                                 gp = gpar(col = 'black',
-                                                           lwd = 0.1),
-                                                 border = TRUE,
+                                                 # gp = gpar(col = 'black',
+                                                 #           lwd = 0.1),
+                                                 # border = TRUE,
                                                  simple_anno_size = unit(0.2, "cm")),
                            show_annotation_name = FALSE)
                        }
                        
-                       #Draw the left annotation is needed, only for the first element.
+                       #Draw the left annotation only for the first element of the heatmap list.
                        
                        if(
                          identical(list_element,
@@ -994,7 +1004,7 @@ draw_heatmap_zscore <- function(zscore_list,
     #Draw the legend
     tpm_lgd <- Legend(
       title = "Min/Max log(TPM + 1)", 
-      col = tpm_col_fun, 
+      col_fun = tpm_col_fun, 
       at = tpm_breaks, 
       labels = tpm_breaks,
       title_gp = gpar(fontsize = 7)
@@ -1033,7 +1043,7 @@ if(global_save_var){
       height = 5,
       width = 5)
   draw_heatmap_zscore(zscore_list = chab_z.list,
-                      gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
+                      gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
                       use_times = TRUE,
                       use_order_vector = FALSE,
                       show_row_names = FALSE,
@@ -1042,11 +1052,11 @@ if(global_save_var){
 }
 
 draw_heatmap_zscore(zscore_list = chab_z.list,
-                    gene_ordering_vector = phaseogram_time_order$RMT$zscore_order$Geneid,
+                    gene_ordering_vector = phaseogram_time_order$SBP$zscore_order$Geneid,
                     use_times = TRUE,
                     use_order_vector = FALSE,
                     show_row_names = FALSE,
-                    tpm_mat = FALSE)
+                    tpm_mat = TRUE)
 
 ```
 
