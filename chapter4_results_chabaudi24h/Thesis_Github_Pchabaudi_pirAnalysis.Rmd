@@ -1228,6 +1228,13 @@ z_max_diff <- inner_join(z_max[[1]], z_max[[2]], by = 'Geneid') %>%
 barplot(group_by(z_max_diff, diff) %>% summarise(total = n()) %>% .$total,
         names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
 
+#And for the pir genes
+barplot(group_by(z_max_diff, diff) %>% 
+          filter(Geneid %in% cir_id) %>% 
+          summarise(total = n()) %>% 
+          .$total,
+        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
+
 ```
 
 
