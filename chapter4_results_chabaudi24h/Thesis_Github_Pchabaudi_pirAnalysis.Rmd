@@ -1258,22 +1258,72 @@ names(z_max_diff.list) <- seq(0,4)
 gaf <- GAFReader("../standard_files/PlasmoDB-48_Pchabaudichabaudi_GO.gaf")
 go_annotation <- inverseList(getAnnotation(gaf))
 
+# How many genes for each group do not have any GO annotations?
+
+lapply(z_max_diff.list,
+       function(gene_diff.list){
+         total_noGO <- sum(!names(gene_diff.list[gene_diff.list == 1]) %in% 
+                             names(go_annotation))
+         prop_noGO <- total_noGO/sum(gene_diff.list == 1)
+         return(paste0(total_noGO, ' genes without annotation = ',
+                       round(prop_noGO*100, digits = 2), '%'))
+       })
+
+```
+
+```{r}
 #Make a topGOdata object 
 GOdata <- new("topGOdata", 
               ontology = "CC", 
               geneSel = function(x){x == 1},
               allGenes = z_max_diff.list$`0`,
+              nodeSize = 5,
               annot = annFUN.gene2GO, 
               gene2GO = go_annotation)
-resultFis <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+resultFis <- runTest(GOdata, 
+                     algorithm = "classic", 
+                     statistic = "fisher")
 hist(score(resultFis), 50, xlab = "p-values")
 GenTable(GOdata, 
          classic = resultFis, 
          orderBy = "classic", 
          ranksOf = "classic",
-         topNodes = 25)
+         topNodes = 25) %>% 
+  filter(classic < 0.05)
+
+lapply(seq(0,4), 
+       function(phase){
+         GOdata <- new("topGOdata", 
+                       ontology = "BP", 
+                       geneSel = function(x){x == 1},
+                       allGenes = getElement(z_max_diff.list, paste(phase)),
+                       nodeSize = 5,
+                       annot = annFUN.gene2GO, 
+                       gene2GO = go_annotation)
+         resultFis <- runTest(GOdata, 
+                              algorithm = "classic", 
+                              statistic = "fisher")
+         hist(score(resultFis), 50, xlab = "p-values")
+         GenTable(GOdata, 
+                  classic = resultFis, 
+                  orderBy = "classic", 
+                  ranksOf = "classic",
+                  topNodes = 25) %>% 
+           filter(classic < 0.05)
+       })
+
+# showSigOfNodes(GOdata, 
+#                score(resultFis), 
+#                firstSigNodes = 5, 
+#                useInfo = 'all')
 ```
 
+Noticeable enrichments of genes that are:
+* In-phase: DNA and nucleotide processes, and amino acid processing, such as DNA replication, tRNA aminoacylation and amino acid activation.
+* 1\*3h Out-of-phase: Translation and peptide biosynthesis, gene expression and ribosome biogenesis.
+* 2\*3h Out-of-phase: (Based on much fewer genes) Metabolism of carbohydrates and respiration.
+* 3\*3h Out-of-phase: (Based on even fewerer genes) More metabolism and lipid biosynthesis.
+* 4\*3h Out-of-phase: (Based on a few more genes actually) mRNA processing.
 
 ## Figure 4 and supplementary figure 7
 
