@@ -1265,8 +1265,13 @@ GOdata <- new("topGOdata",
               allGenes = z_max_diff.list$`0`,
               annot = annFUN.gene2GO, 
               gene2GO = go_annotation)
-
-
+resultFis <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+hist(score(resultFis), 50, xlab = "p-values")
+GenTable(GOdata, 
+         classic = resultFis, 
+         orderBy = "classic", 
+         ranksOf = "classic",
+         topNodes = 25)
 ```
 
 
