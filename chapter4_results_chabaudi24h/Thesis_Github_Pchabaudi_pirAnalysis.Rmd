@@ -35,6 +35,8 @@ library('ComplexHeatmap')
 library('circlize') # for circular plots and colour
 library("factoextra")
 library("MatrixGenerics") # for rowMins and rowMax
+library("topGO")
+library("FoldGO")
 
 # library('DESeq2')
 # library("pheatmap")
@@ -1238,10 +1240,33 @@ barplot(group_by(z_max_diff, diff) %>%
 
 ```{r phase_go_enrich}
 #Get the gene list for each group of genes in and out of phase.
+gene.list <- chabaudi_gene_info$Geneid
 z_max_diff.list <- lapply(seq(0,4), 
-                          function(diff_num) filter(z_max_diff, diff == diff_num) %>% 
-                            .$Geneid)
+                          function(diff_num) {
+                            diff.list <- filter(z_max_diff, diff == diff_num) %>% 
+                              .$Geneid
+                            #Get 1 for on the list and 0 for not.
+                            gene_diff.list <- as.integer(gene.list %in% diff.list)
+                            names(gene_diff.list) <- gene.list
+                            return(gene_diff.list)
+                          })
 names(z_max_diff.list) <- seq(0,4)
+
+#Read in the GO-Annotation file using GAFReader from FoldGO.
+# getAnnotation to obtain a list of the GO terms and associated genes.
+# inverseList (from topGO) to turn this into list of geneID with associated GO terms.
+gaf <- GAFReader("../standard_files/PlasmoDB-48_Pchabaudichabaudi_GO.gaf")
+go_annotation <- inverseList(getAnnotation(gaf))
+
+#Make a topGOdata object 
+GOdata <- new("topGOdata", 
+              ontology = "CC", 
+              geneSel = function(x){x == 1},
+              allGenes = z_max_diff.list$`0`,
+              annot = annFUN.gene2GO, 
+              gene2GO = go_annotation)
+
+
 ```
 
 
