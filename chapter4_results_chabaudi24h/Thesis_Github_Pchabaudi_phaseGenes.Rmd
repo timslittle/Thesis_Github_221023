@@ -1,0 +1,377 @@
+---
+title: "Manuscript_Github_Pchabaudi_phaseGene"
+author: "Timothy Little"
+date: "27/07/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+knitr::opts_knit$set(root.dir = 
+                       ".")
+#Note that the above doesn't give an error if the dir doesn't exist
+
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+
+library('readr')
+library('dplyr')
+library('ggplot2')
+library("RColorBrewer")
+library('data.table')
+library('tibble')
+library('stringr')
+library('kableExtra')
+library('viridis')
+library('reshape2')
+library('ComplexHeatmap')
+library('circlize') # for circular plots and colour
+library("factoextra")
+library("MatrixGenerics") # for rowMins and rowMax
+library("topGO")
+library("FoldGO")
+
+#Colour blind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+#Want the defaults for arrange, mutate and summarise to be from dplyr
+arrange <- dplyr::arrange
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+select <- dplyr::select
+
+#Global save var - set to TRUE if you want to save figures.
+global_save_var <- FALSE
+```
+
+```{r sourcing_functions}
+source('../rfunctions/uniquify_fun.R')
+source('../rfunctions/ordering_fun.R')
+source('../rfunctions/tpm_fun.R')
+source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+source('../rfunctions/draw_heatmap_zscore.R')
+```
+
+```{r ordering_vec}
+order_vector <- c("Early.Rings",
+                  "Early.Mid.Rings",
+                  "Late.Mid.Rings",
+                  "Late.Rings",
+                  "Rings.Troph.conversion",
+                  "Early.Trophs",
+                  "Mid.Trophs",
+                  "Late.Trophs")
+```
+
+The _cir_ gene names were downloaded using a search of PlasmoDB _P. chabaudi_ genome. _cir_ genes are the names of _pir_ genes in _P chabaudi_.
+
+```{r cir_id, message=FALSE, results='hide'}
+
+# Getting the cir gene names and transcript lengths needed for calculating the transcript-per-million
+
+chabaudi_gene_info <- read.csv('../standard_files/PlasmoDB-47_beta_Pchabaudichabaudi_GenesByTaxon_Summary.csv',
+                              header = TRUE,
+                              stringsAsFactors = FALSE)
+
+chabaudi_transcript_lengths <- select(chabaudi_gene_info, c(Gene.ID, Transcript.Length)) %>% 
+  arrange(Gene.ID)
+
+chabaudi_gene_info <- dplyr::rename(chabaudi_gene_info, 
+                             Geneid = Gene.ID,
+                             Description = Product.Description)
+
+```
+
+```{r cir_info}
+
+cir_info <- read_delim('../standard_files/Pchabaudi_pir_info.txt',
+           delim = '\t')
+cir_id <- cir_info$Geneid
+
+cir_clade_info <- read_delim('../standard_files/Pchabaudi_pir_clades.txt',
+            delim = '\t')
+```
+
+```{r times_stages_labels}
+#Use the RMT stage differential count in order to name the samples, but keep time to retain order
+times_stages_table <- data.frame(time = c('02h', '05h', '08h', '11h', '14h', '17h','20h','23h'),
+                                 stage_diff_count = c('Late-Rings',
+                                                      'Rings-Troph-conversion',
+                                                      'Early-Trophs',
+                                                      'Mid-Trophs',
+                                                      'Late-Trophs',
+                                                      'Early-Rings',
+                                                      'Early-Mid-Rings',
+                                                      'Late-Mid-Rings'))
+# R will convert the dashes to '.' at some point so let's have this notation here also
+times_stages_table$r_stage_diff_count <- str_replace_all(times_stages_table$stage_diff_count, 
+                                                         pattern = '-', 
+                                                         replacement = '\\.')
+```
+
+```{r read_TPM}
+#Need to use the calculateTPM script first.
+
+chab_tpm.df <- read_csv('data/Pchabaudi_TPM_all.csv')
+
+chab_tpm_avg.df <- read_csv('data/Pchabaudi_TPM_average.csv')
+
+chab_tpm_avg.list <- list(
+  'RMT' = list(
+    tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
+                                pattern = 'rMT|Geneid')],
+    experiment = 'RMT'
+  ),
+  'SBP' = list(
+    tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
+                                pattern = 'SBP|Geneid')],
+    experiment = 'SBP'
+  )
+)
+
+```
+
+```{r import_z}
+chab_z.df <- inner_join(chab_z.list[[1]]$zscores, 
+                        chab_z.list[[2]]$zscores, 
+                        by = 'Geneid')
+chab_z.df <- read.csv(file = 'data/Pchabaudi_z.csv')
+
+chab_z.list <- list('rMT' = list('zscores' = chab_z.df[,grepl(colnames(chab_z.df),
+                                                                             pattern = 'Geneid|rMT')]),
+                    'SBP' = list('zscores' = chab_z.df[,grepl(colnames(chab_z.df),
+                                                                             pattern = 'Geneid|SBP')]))
+
+order_z_rMT <- read.table(file = 'data/Pchabaudi_z_phaseOrder_rMT.list')[,1]
+order_z_SBP <- read.table(file = 'data/Pchabaudi_z_phaseOrder_SBP.list')[,1]
+
+```
+
+```{r colours_clades_phase}
+SorL_col <- setNames(
+  c(    '#F0E442',
+        '#56B4E9', #L
+        '#E69F00', #S
+        '#999999'),
+  sort(
+    unique(cir_info$SorL)
+  )
+)
+
+SorL_col_num <- SorL_col
+names(SorL_col_num) <- sapply(names(SorL_col), 
+                              function(clade_name) {
+                                paste0(
+                                  clade_name, 
+                                  ' (n = ',
+                                  sum(cir_info$SorL == clade_name),
+                                  ')'
+                                )
+                              })
+
+clade_col <- setNames(
+  c('#F0E442',
+    '#56B4E9', #L1
+    '#009E73',
+    '#0072B2',
+    '#E69F00', #S1
+    '#D55E00',
+    '#CC79A7',
+    '#999999'),
+  sort(
+    unique(cir_info$subfam)
+  )
+)
+
+clade_col_num <- clade_col
+names(clade_col_num) <- sapply(names(clade_col), 
+                               function(clade_name) {
+                                 paste0(
+                                   clade_name, 
+                                   ' (n = ',
+                                   sum(cir_info$subfam == clade_name),
+                                   ')'
+                                 )
+                               })
+
+
+```
+
+```{r gene_sync}
+
+#Which genes are out of sync between rMT and SBP?
+
+#Melt the z-score dataframe into long form, then slice out the maximum z-score value.
+# Filter out any gene which has multiple max values for simplicity.
+# Summarise this with the numbers that each stage (the max stage) corresponds to.
+
+z_max <- lapply(chab_z.list, function(x) {
+  x$zscores %>% 
+  reshape2::melt(id.vars = 'Geneid', 
+       variable.name = 'sample', 
+       value.name = 'zscore') %>% 
+  group_by(Geneid) %>% 
+  slice_max(order_by = zscore, n = 1) %>% 
+  filter(n() == 1) %>% 
+  summarise(sample_max = times_stages_table$num[
+    str_detect(sample, 
+               times_stages_table$time)
+    ])
+})
+
+#Bind the two together with inner_join so that it only includes genes in both.
+# Then calculate the peak difference by subtracting the difference between the sample numbers.
+# Since this is a cycle, no point of the cycle is theoretically 
+#  more than 4 time points away from the next one. 
+#  e.g. 23h and 02h (8 and 1) are only 1 time point apart, not seven.
+#  Hence we subtract values above four from eight
+z_max_diff <- inner_join(z_max[[1]], z_max[[2]], by = 'Geneid') %>% 
+  mutate(diff = ifelse(abs(sample_max.x - sample_max.y) > 4,
+                       8 - abs(sample_max.x - sample_max.y),
+                       abs(sample_max.x - sample_max.y)))
+
+#Probably unnecessarily complicated code to make a barplot of how many genes 
+# are peaking at different timepoints between rMT and SBP
+barplot(group_by(z_max_diff, diff) %>% summarise(total = n()) %>% .$total,
+        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
+
+#And for the pir genes
+barplot(group_by(z_max_diff, diff) %>% 
+          filter(Geneid %in% cir_id) %>% 
+          summarise(total = n()) %>% 
+          .$total,
+        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
+
+```
+
+```{r phase_go_enrich}
+#Get the gene list for each group of genes in and out of phase.
+gene.list <- chabaudi_gene_info$Geneid
+z_max_diff.list <- lapply(seq(0,4), 
+                          function(diff_num) {
+                            diff.list <- filter(z_max_diff, diff == diff_num) %>% 
+                              .$Geneid
+                            #Get 1 for on the list and 0 for not.
+                            gene_diff.list <- as.integer(gene.list %in% diff.list)
+                            names(gene_diff.list) <- gene.list
+                            return(gene_diff.list)
+                          })
+names(z_max_diff.list) <- seq(0,4)
+
+#Read in the GO-Annotation file using GAFReader from FoldGO.
+# getAnnotation to obtain a list of the GO terms and associated genes.
+# inverseList (from topGO) to turn this into list of geneID with associated GO terms.
+gaf <- GAFReader("../standard_files/PlasmoDB-48_Pchabaudichabaudi_GO.gaf")
+go_annotation <- inverseList(getAnnotation(gaf))
+
+# How many genes for each group do not have any GO annotations?
+
+lapply(z_max_diff.list,
+       function(gene_diff.list){
+         total_noGO <- sum(!names(gene_diff.list[gene_diff.list == 1]) %in% 
+                             names(go_annotation))
+         prop_noGO <- total_noGO/sum(gene_diff.list == 1)
+         return(paste0(total_noGO, ' genes without annotation = ',
+                       round(prop_noGO*100, digits = 2), '%'))
+       })
+
+```
+
+```{r}
+#Load for the showSigOfNodes network function.
+library('Rgraphviz')
+
+#Make a topGOdata object 
+GOdata <- new("topGOdata", 
+              ontology = "BP", 
+              geneSel = function(x){x == 1},
+              allGenes = z_max_diff.list$`1`,
+              nodeSize = 5,
+              annot = annFUN.gene2GO, 
+              gene2GO = go_annotation)
+resultFis <- runTest(GOdata, 
+                     algorithm = "classic", 
+                     statistic = "fisher")
+plot.new()
+hist(score(resultFis), 50, xlab = "p-values")
+dev.off()
+showSigOfNodes(GOdata,
+               score(resultFis),
+               firstSigNodes = 5,
+               useInfo = 'all')
+goRes <- GenTable(GOdata, 
+         classic = resultFis, 
+         orderBy = "classic", 
+         ranksOf = "classic",
+         topNodes = 25) %>% 
+  filter(classic < 0.05)
+
+#Get first (most significant) enriched GO id 
+goID <- goRes[4, "GO.ID"]
+#Show distribution of GO term genes compared to null distribution (all other genes)
+print(showGroupDensity(GOdata, goID, ranks = TRUE))
+
+#Unlist the lapply below which goes through each element of the list and 
+# returns TRUE is the go_id is listed for that gene.
+#This makes a TRUE/FALSE index for the list/names of the list which can get 
+# the genes associated with that GO id.
+goID_genes <- names(go_annotation)[unlist(
+  lapply(go_annotation, 
+         function(go_ids){
+           any(goID %in% go_ids)
+         })
+)]
+
+
+draw_heatmap_zscore(zscore_list = chab_z.list,
+                    filter_genes_vector = names(z_max_diff.list$`1`[z_max_diff.list$`2` == 1]),
+                    gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = TRUE)
+```
+
+```{r}
+
+lapply(seq(0,4), 
+       function(phase){
+         GOdata <- new("topGOdata", 
+                       ontology = "BP", 
+                       geneSel = function(x){x == 1},
+                       allGenes = getElement(z_max_diff.list, paste(phase)),
+                       nodeSize = 5,
+                       annot = annFUN.gene2GO, 
+                       gene2GO = go_annotation)
+         resultFis <- runTest(GOdata, 
+                              algorithm = "classic", 
+                              statistic = "fisher")
+         draw_heatmap_zscore(zscore_list = chab_z.list,
+                             filter_genes_vector = names(
+                               getElement(z_max_diff.list, paste(phase))[
+                                 getElement(z_max_diff.list, paste(phase)) == 1
+                               ]
+                             ),
+                             gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                             threshold_tpm = 1,
+                             use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = TRUE)
+         GenTable(GOdata, 
+                  classic = resultFis, 
+                  orderBy = "classic", 
+                  ranksOf = "classic",
+                  topNodes = 25) %>% 
+           filter(classic < 0.05)
+       })
+
+```
