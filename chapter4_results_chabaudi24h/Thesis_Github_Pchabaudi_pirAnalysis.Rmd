@@ -1272,24 +1272,62 @@ lapply(z_max_diff.list,
 ```
 
 ```{r}
+#Load for the showSigOfNodes network function.
+library('Rgraphviz')
+
 #Make a topGOdata object 
 GOdata <- new("topGOdata", 
-              ontology = "CC", 
+              ontology = "BP", 
               geneSel = function(x){x == 1},
-              allGenes = z_max_diff.list$`0`,
+              allGenes = z_max_diff.list$`1`,
               nodeSize = 5,
               annot = annFUN.gene2GO, 
               gene2GO = go_annotation)
 resultFis <- runTest(GOdata, 
                      algorithm = "classic", 
                      statistic = "fisher")
+plot.new()
 hist(score(resultFis), 50, xlab = "p-values")
-GenTable(GOdata, 
+dev.off()
+showSigOfNodes(GOdata,
+               score(resultFis),
+               firstSigNodes = 5,
+               useInfo = 'all')
+goRes <- GenTable(GOdata, 
          classic = resultFis, 
          orderBy = "classic", 
          ranksOf = "classic",
          topNodes = 25) %>% 
   filter(classic < 0.05)
+
+#Get first (most significant) enriched GO id 
+goID <- goRes[4, "GO.ID"]
+#Show distribution of GO term genes compared to null distribution (all other genes)
+print(showGroupDensity(GOdata, goID, ranks = TRUE))
+
+#Unlist the lapply below which goes through each element of the list and 
+# returns TRUE is the go_id is listed for that gene.
+#This makes a TRUE/FALSE index for the list/names of the list which can get 
+# the genes associated with that GO id.
+goID_genes <- names(go_annotation)[unlist(
+  lapply(go_annotation, 
+         function(go_ids){
+           any(goID %in% go_ids)
+         })
+)]
+
+
+draw_heatmap_zscore(zscore_list = chab_z.list,
+                    filter_genes_vector = names(z_max_diff.list$`1`[z_max_diff.list$`2` == 1]),
+                    gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                    threshold_tpm = 1,
+                    use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = TRUE)
+```
+
+```{r}
 
 lapply(seq(0,4), 
        function(phase){
@@ -1303,7 +1341,18 @@ lapply(seq(0,4),
          resultFis <- runTest(GOdata, 
                               algorithm = "classic", 
                               statistic = "fisher")
-         hist(score(resultFis), 50, xlab = "p-values")
+         draw_heatmap_zscore(zscore_list = chab_z.list,
+                             filter_genes_vector = names(
+                               getElement(z_max_diff.list, paste(phase))[
+                                 getElement(z_max_diff.list, paste(phase)) == 1
+                               ]
+                             ),
+                             gene_ordering_vector = phaseogram_time_order$rMT$zscore_order$Geneid,
+                             threshold_tpm = 1,
+                             use_times = TRUE,
+                    use_order_vector = FALSE,
+                    show_row_names = FALSE,
+                    tpm_mat = TRUE)
          GenTable(GOdata, 
                   classic = resultFis, 
                   orderBy = "classic", 
@@ -1312,10 +1361,8 @@ lapply(seq(0,4),
            filter(classic < 0.05)
        })
 
-# showSigOfNodes(GOdata, 
-#                score(resultFis), 
-#                firstSigNodes = 5, 
-#                useInfo = 'all')
+
+
 ```
 
 Noticeable enrichments of genes that are:
@@ -1324,6 +1371,11 @@ Noticeable enrichments of genes that are:
 * 2\*3h Out-of-phase: (Based on much fewer genes) Metabolism of carbohydrates and respiration.
 * 3\*3h Out-of-phase: (Based on even fewerer genes) More metabolism and lipid biosynthesis.
 * 4\*3h Out-of-phase: (Based on a few more genes actually) mRNA processing.
+
+Fore node visualisation:
+"Rectangles indicate the 5 most signicant terms. Rectangle color represents the relative signicance,
+ranging from dark red (most signicant) to bright yellow (least signicant). For each node, some basic information
+is displayed"
 
 ## Figure 4 and supplementary figure 7
 
