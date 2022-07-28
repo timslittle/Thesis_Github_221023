@@ -10,6 +10,7 @@ draw_heatmap_zscore <- function(zscore_list,
                                 use_order_vector = TRUE,
                                 tpm_mat = TRUE,
                                 tpm_breaks = NULL,
+                                column_title_name = NULL,
                                 ...){
   if(is.null(tpm_breaks) & tpm_mat){
     #Need the generate the breaks in the data for the heatmap legend if not provided.
@@ -291,8 +292,9 @@ draw_heatmap_zscore <- function(zscore_list,
   
   draw(ht_list, 
        row_title_side = 'left',
-       column_title_side = 'bottom',
+       column_title_side = 'top',
        heatmap_legend_side = 'left',
+       column_title = column_title_name,
        #Only include the annotation legends for the annotations we actually have.
        annotation_legend_list = if(is.character(annotation_clade) & tpm_mat){
          list(tpm_lgd,
