@@ -592,6 +592,51 @@ if(global_save_var){
   
 ```
 
+```{r all_pir_barchart}
+  cir_plot <- chab_tpm.df %>% 
+    filter(Geneid %in% cir_id) %>% 
+    melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
+    # mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>%
+    mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
+           transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1]) %>% 
+    group_by(sample, time, transmission) %>% 
+    dplyr::summarise(sum_tpm = sum(tpm))
+
+y_scale <- seq(0, 
+               signif(ceiling(max(cir_plot$sum_tpm)), 
+                      digits = 2), 
+               length.out = 5)
+
+(
+  p <- ggplot(data = cir_plot, 
+              aes(x = time, 
+                  y = sum_tpm,
+                  fill = transmission)) +
+    stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "bar", width = 0.75, size = 0.25, position = 'dodge') +
+    scale_y_continuous(breaks = y_scale) +
+    scale_fill_manual(values = cbPalette) +
+    geom_point(stat = 'identity', position = position_dodge(width = 0.75)) +
+    ylab(as.expression(bquote('Total '~italic(.('pir'))~'TPM'))) +
+    xlab('Asexual blood stage development cycle') +
+    theme_classic() +
+    theme(axis.text.x=element_text(angle = 0, 
+                                   vjust = 0.5,
+                                   size = 10))
+)
+
+if(global_save_var){
+  ggsave(filename = 'plots/allPir_BarChart.pdf',
+          plot = p,
+          dpi = 300,
+          width = 15,
+          height = 10,
+          units = 'cm')
+}
+  
+```
+
+
 # Calculate and cluster with z-scores {.tabset}
 
 z-score represents the number of standard deviations from the mean of the data. To calculate from TPM or counts for a given gene X:
