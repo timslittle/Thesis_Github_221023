@@ -245,14 +245,16 @@ z_max_diff <- inner_join(z_max[[1]], z_max[[2]], by = 'Geneid') %>%
 #Probably unnecessarily complicated code to make a barplot of how many genes 
 # are peaking at different timepoints between rMT and SBP
 barplot(group_by(z_max_diff, diff) %>% summarise(total = n()) %>% .$total,
-        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
+        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'),
+        main = 'all genes out-of-phase')
 
 #And for the pir genes
 barplot(group_by(z_max_diff, diff) %>% 
           filter(Geneid %in% cir_id) %>% 
           summarise(total = n()) %>% 
           .$total,
-        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'))
+        names.arg = paste0(sort(unique(z_max_diff$diff))*3, 'h'),
+        main = 'pir genes out-of-phase')
 
 ```
 
@@ -315,56 +317,11 @@ lapply(z_max_diff.list,
 
 ```
 
-```{r}
-#Load for the showSigOfNodes network function.
-
-
-#Make a topGOdata object 
-GOdata <- new("topGOdata", 
-              ontology = "BP", 
-              geneSel = function(x){x == 1},
-              allGenes = z_max_diff.list$`1`,
-              nodeSize = 5,
-              annot = annFUN.gene2GO, 
-              gene2GO = go_annotation)
-resultFis <- runTest(GOdata, 
-                     algorithm = "classic", 
-                     statistic = "fisher")
-plot.new()
-hist(score(resultFis), 50, xlab = "p-values")
-dev.off()
-showSigOfNodes(GOdata,
-               score(resultFis),
-               firstSigNodes = 5,
-               useInfo = 'all')
-goRes <- GenTable(GOdata, 
-         classic = resultFis, 
-         orderBy = "classic", 
-         ranksOf = "classic",
-         topNodes = 25) %>% 
-  filter(classic < 0.05)
-
-#Get first (most significant) enriched GO id 
-goID <- goRes[1, "GO.ID"]
-#Show distribution of GO term genes compared to null distribution (all other genes)
-print(showGroupDensity(GOdata, goID, ranks = TRUE))
-
-#Unlist the lapply below which goes through each element of the list and 
-# returns TRUE is the go_id is listed for that gene.
-#This makes a TRUE/FALSE index for the list/names of the list which can get 
-# the genes associated with that GO id.
-goID_genes <- names(go_annotation)[unlist(
-  lapply(go_annotation, 
-         function(go_ids){
-           any(goID %in% go_ids)
-         })
-)]
-
-```
-
-```{r}
-
-GOres.list <- lapply(seq(0,4), 
+```{r go-list}
+# Use the topGO functions to make a topGOdata object, 
+# conduct a Fisher test for statistical significance, 
+# then create a table of these signifcant GO terms.
+GOres.list <- lapply(paste0(seq(0,4)*3, 'h'), 
                      function(phase){
                        GOdata <- new("topGOdata", 
                                      ontology = "BP", 
