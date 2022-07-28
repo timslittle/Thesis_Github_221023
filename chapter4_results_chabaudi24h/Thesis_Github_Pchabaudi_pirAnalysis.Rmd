@@ -882,18 +882,6 @@ write.table(x = phaseogram_time_order$SBP$zscore_order$Geneid,
             row.names = FALSE, col.names = FALSE)
 ```
 
-Noticeable enrichments of genes that are:
-* In-phase: DNA and nucleotide processes, and amino acid processing, such as DNA replication, tRNA aminoacylation and amino acid activation.
-* 1\*3h Out-of-phase: Translation and peptide biosynthesis, gene expression and ribosome biogenesis.
-* 2\*3h Out-of-phase: (Based on much fewer genes) Metabolism of carbohydrates and respiration.
-* 3\*3h Out-of-phase: (Based on even fewerer genes) More metabolism and lipid biosynthesis.
-* 4\*3h Out-of-phase: (Based on a few more genes actually) mRNA processing.
-
-For node visualisation:
-"Rectangles indicate the 5 most significant terms. Rectangle color represents the relative significance,
-ranging from dark red (most significant) to bright yellow (least significant). For each node, some basic information
-is displayed"
-
 ## Figure 4 and supplementary figure 7
 
 _pir_ genes selected by being expressed above 1 TPM in all samples.

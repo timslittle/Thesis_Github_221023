@@ -5,6 +5,8 @@ date: "27/07/2022"
 output: html_document
 ---
 
+Looking at GO enrichment of genes in- and out-of-phase between the 24 asexual life cycles of rMT and SBP transmitted P. chabaudi.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, 
                       results = TRUE, 
@@ -71,10 +73,8 @@ order_vector <- c("Early.Rings",
                   "Late.Trophs")
 ```
 
-The _cir_ gene names were downloaded using a search of PlasmoDB _P. chabaudi_ genome. _cir_ genes are the names of _pir_ genes in _P chabaudi_.
-
 ```{r cir_id, message=FALSE, results='hide'}
-
+# The _cir_ gene names were downloaded using a search of PlasmoDB _P. chabaudi_ genome. _cir_ genes are the names of _pir_ genes in _P chabaudi_.
 # Getting the cir gene names and transcript lengths needed for calculating the transcript-per-million
 
 chabaudi_gene_info <- read.csv('../standard_files/PlasmoDB-47_beta_Pchabaudichabaudi_GenesByTaxon_Summary.csv',
@@ -208,6 +208,12 @@ names(clade_col_num) <- sapply(names(clade_col),
 
 ```
 
+Working out whether a given gene is out-of-sync based on when it peaks in transcription. If it peaks at different timepoints in rMT compared to SBP, then the time difference between these points is considered the gene's synchronicity. 0h refers to a gene that's transcriped maximally at the same time in rMT and SBP infections. 
+
+Note that this isn't directional; 6h out-of-sync could be 6h before or after.
+
+# Number of genes out-of-phase.
+
 ```{r gene_sync}
 
 #Which genes are out of sync between rMT and SBP?
@@ -294,7 +300,9 @@ lapply(paste0(seq(0,4)*3, 'h'),
        })
 ```
 
-How many of these genes do not have GO annotations?
+The out-of-phase values represent the data reasonably well, although it is notable that for some genes only 3 or 6h out-of-sync the peak of transcription is quite broad and overlaps.
+
+# How many of these genes do not have GO annotations?
 
 ```{r phase_go_enrich}
 
@@ -316,6 +324,12 @@ lapply(z_max_diff.list,
        })
 
 ```
+
+# GO term enrichment.
+
+Perform a Fishers test using values of 1 for genes of out-of-sync group being tested, and 0 for all others.
+
+## Cellular Component.
 
 ```{r go-list}
 # Use the topGO functions to make a topGOdata object, 
@@ -348,33 +362,45 @@ lapply(GOres.list, getElement, 'gentable')
 
 ```
 
+Phaseograms of the genes represented by the most significant GO term returned for each out-of-sync group. 
+
+These phaseograms show every gene in the entire dataset associated with the 1st or 2nd most statistically signif enriched GO term, so they may not all be as out-of-phase as one another. It is likely that only a subset of GO term genes will be out-of-sync by the same number of timepoints but this can be sufficient still for the GO term to be enriched. See the tables above for the number of genes in that GO term group ('Annotated') and the number that are in that out-of-sync group ('Significant').
+
+This is a good test to see if this GO enrichment seems correct - if most of the genes look like they're not in the phase expected then the GO enrichment is probably erroneous.
+
 ```{r topGO_phase}
+
 lapply(names(GOres.list), 
        function(GOres.num){
          GOres <- getElement(GOres.list, GOres.num)
-         #Get first (most significant) enriched GO id 
-         which_go <- 2
-         goID <- GOres$gentable[which_go, "GO.ID"]
-         goTerm <- GOres$gentable[which_go, "Term"]
-         
-         #Show distribution of GO term genes compared to null distribution (all other genes)
-         # print(showGroupDensity(GOres$GOdata, goID, ranks = TRUE))
-         
-         #Can use genesInTerm function to extract the genes related to that GO term
-         genesinterm <- genesInTerm(GOres$GOdata, goID)
-         goID_genes <- unlist(genesinterm)
-         names(goID_genes) <- genesinterm
-         
-         draw_heatmap_zscore(zscore_list = chab_z.list,
-                             filter_genes_vector = goID_genes,
+         lapply(c(1,2), 
+                function(which_go){
+                  #Get first or second (most significant) enriched GO id.
+                  goID <- GOres$gentable[which_go, "GO.ID"]
+                  goTerm <- GOres$gentable[which_go, "Term"]
+                  
+                  #Show distribution of GO term genes compared to null distribution (all other genes)
+                  # print(showGroupDensity(GOres$GOdata, goID, ranks = TRUE))
+                  
+                  #Can use genesInTerm function to extract the genes related to that GO term
+                  genesinterm <- genesInTerm(GOres$GOdata, goID)
+                  goID_genes <- unlist(genesinterm)
+                  names(goID_genes) <- genesinterm
+                  
+                  draw_heatmap_zscore(zscore_list = chab_z.list,
+                                      filter_genes_vector = goID_genes,
                              gene_ordering_vector = order_z_rMT,
                              threshold_tpm = 1,
                              use_times = TRUE,
                              use_order_vector = FALSE,
                              show_row_names = FALSE,
                              tpm_mat = TRUE,
-                             column_title_name = paste0(GOres.num, ' - ', goTerm)
+                             column_title_name = paste0(GOres.num, ' - ',
+                                                        which_go, ' most sig',
+                                                        ' - ', goTerm)
          )
+         return()
+                })
          return()
        })
 
@@ -382,4 +408,81 @@ lapply(names(GOres.list),
 
 Note that some enriched GO terms may not appear in the annotation file (.gaf) directly as they are found to be enriched through the network of related/ancestral terms from the GO network of relations.
 
-Also these phaseograms show every gene in entire dataset associated with the top GO term, so they may not all be as out-of-phase as one another. This is a good test to see if this GO enrichment seems correct - if most of the genes look like they're not in the phase expected then the GO enrichment is probably erroneous.
+## Biological Process
+
+```{r go-list}
+# Use the topGO functions to make a topGOdata object, 
+# conduct a Fisher test for statistical significance, 
+# then create a table of these signifcant GO terms.
+GOres.bp.list <- lapply(paste0(seq(0,4)*3, 'h'), 
+                     function(phase){
+                       GOdata <- new("topGOdata", 
+                                     ontology = "BP", 
+                                     geneSel = function(x){x == 1},
+                                     allGenes = getElement(z_max_diff.list, paste(phase)),
+                                     nodeSize = 5,
+                                     annot = annFUN.gene2GO, 
+                                     gene2GO = go_annotation)
+                       resultFis <- runTest(GOdata, 
+                                            algorithm = "classic", 
+                                            statistic = "fisher")
+                       gentable <- GenTable(GOdata, 
+                                              classic = resultFis, 
+                                              orderBy = "classic", 
+                                              ranksOf = "classic",
+                                              topNodes = 25) %>% 
+                           filter(classic < 0.05)
+                       return(list(GOdata = GOdata,
+                                   resultFis = resultFis,
+                                   gentable = gentable))
+                     })
+names(GOres.bp.list) <- paste0(seq(0,4)*3, 'h')
+lapply(GOres.bp.list, getElement, 'gentable')
+
+```
+
+
+```{r topGO_phase}
+
+lapply(names(GOres.bp.list), 
+       function(GOres.num){
+         GOres <- getElement(GOres.bp.list, GOres.num)
+         lapply(c(1,2), 
+                function(which_go){
+                  #Get first or second (most significant) enriched GO id.
+                  goID <- GOres$gentable[which_go, "GO.ID"]
+                  goTerm <- GOres$gentable[which_go, "Term"]
+                  
+                  #Show distribution of GO term genes compared to null distribution (all other genes)
+                  # print(showGroupDensity(GOres$GOdata, goID, ranks = TRUE))
+                  
+                  #Can use genesInTerm function to extract the genes related to that GO term
+                  genesinterm <- genesInTerm(GOres$GOdata, goID)
+                  goID_genes <- unlist(genesinterm)
+                  names(goID_genes) <- genesinterm
+                  
+                  draw_heatmap_zscore(zscore_list = chab_z.list,
+                                      filter_genes_vector = goID_genes,
+                             gene_ordering_vector = order_z_rMT,
+                             threshold_tpm = 1,
+                             use_times = TRUE,
+                             use_order_vector = FALSE,
+                             show_row_names = FALSE,
+                             tpm_mat = TRUE,
+                             column_title_name = paste0(GOres.num, ' - ',
+                                                        which_go, ' most sig',
+                                                        ' - ', goTerm)
+         )
+         return()
+                })
+         return()
+       })
+
+```
+
+Noticeable enrichments of genes that are:
+* In-phase: DNA and nucleotide processes, and amino acid processing, such as DNA replication, tRNA aminoacylation and amino acid activation.
+* 1\*3h Out-of-phase: Translation and peptide biosynthesis, gene expression and ribosome biogenesis.
+* 2\*3h Out-of-phase: (Based on much fewer genes) Metabolism of carbohydrates and respiration.
+* 3\*3h Out-of-phase: (Based on even fewerer genes) More metabolism and lipid biosynthesis.
+* 4\*3h Out-of-phase: (Based on a few more genes actually) mRNA processing.
