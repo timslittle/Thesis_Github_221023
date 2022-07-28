@@ -324,7 +324,7 @@ lapply(z_max_diff.list,
 GOres.list <- lapply(paste0(seq(0,4)*3, 'h'), 
                      function(phase){
                        GOdata <- new("topGOdata", 
-                                     ontology = "BP", 
+                                     ontology = "CC", 
                                      geneSel = function(x){x == 1},
                                      allGenes = getElement(z_max_diff.list, paste(phase)),
                                      nodeSize = 5,
@@ -353,11 +353,12 @@ lapply(names(GOres.list),
        function(GOres.num){
          GOres <- getElement(GOres.list, GOres.num)
          #Get first (most significant) enriched GO id 
-         goID <- GOres$gentable[1, "GO.ID"]
-         goTerm <- GOres$gentable[1, "Term"]
+         which_go <- 2
+         goID <- GOres$gentable[which_go, "GO.ID"]
+         goTerm <- GOres$gentable[which_go, "Term"]
          
          #Show distribution of GO term genes compared to null distribution (all other genes)
-         print(showGroupDensity(GOres$GOdata, goID, ranks = TRUE))
+         # print(showGroupDensity(GOres$GOdata, goID, ranks = TRUE))
          
          #Can use genesInTerm function to extract the genes related to that GO term
          genesinterm <- genesInTerm(GOres$GOdata, goID)
@@ -374,6 +375,7 @@ lapply(names(GOres.list),
                              tpm_mat = TRUE,
                              column_title_name = paste0(GOres.num, ' - ', goTerm)
          )
+         return()
        })
 
 ```
