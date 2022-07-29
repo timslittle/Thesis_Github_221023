@@ -213,3 +213,181 @@ chab_tpm_avg.list <- list(
 )
 
 ```
+
+Adding in housekeeping genes for comparison:
+HSP70 putative  PCHAS_0721000
+MSP1 PCHAS_0831300
+AMA1 PCHAS_0931000
+
+```{r highest_expressed_stage_heatmap_fig3b}
+
+housekeeping_genes <- data.frame('HSP70' = 'PCHAS_0721000',
+                                 'MSP1' = 'PCHAS_0831300',
+                                 'AMA1' = 'PCHAS_0931000')
+
+cir_housekeeping_id <- c(cir_id, 
+                         'PCHAS_0721000',
+                         'PCHAS_0831300',
+                         'PCHAS_0931000')
+
+# Get order of pir genes by highest expressed genes in each sample.
+
+combined_data_pir <-  filter(chab_tpm_avg.df,
+                             Geneid %in% cir_housekeeping_id) %>% 
+  column_to_rownames(var = 'Geneid') %>% 
+  filter_all(
+    any_vars(. > 10)
+  )
+
+```
+
+```{r}
+#Ordering that a more understandable order
+
+combined_data_ordered <- tibble(Geneid = names(apply(combined_data_pir, 1, mean)),
+                                means = apply(combined_data_pir, 1, mean),
+                                subfam = factor(
+                                  ifelse(rownames(combined_data_pir) %in% cir_id,
+                                         cir_info$subfam[match(rownames(combined_data_pir), 
+                                                               cir_info$Geneid)],
+                                         'ref')
+                                )) %>% 
+  mutate(subfam =
+           forcats::fct_shift(
+             relevel(
+               as.factor(subfam),
+               ref = 'ref')
+           )
+  ) %>% 
+  # filter(means > 1) %>% 
+  arrange(subfam, 
+          desc(means)) %>% 
+  .$Geneid
+
+#Order the heatmap data by the order defined above (Subfam, then mean expression).
+combined_data_pir_ht <- combined_data_pir[
+  order(
+    match(rownames(combined_data_pir),
+          combined_data_ordered),
+    na.last = NA #Remove NAs
+  ),
+]
+
+#Change the colnames to the times
+colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
+                                              pattern = '[[:digit:]]{2}h')
+
+#Order by time point
+combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
+                                             drop = FALSE] 
+```
+
+```{r}
+#Add a column for the subfam (ref for the reference genes)
+combined_data_pir_ht$subfam <- ifelse(rownames(combined_data_pir_ht) %in% cir_id,
+                                      cir_info$subfam_num[match(rownames(combined_data_pir_ht), 
+                                                            cir_info$Geneid)],
+                                      'ref')
+
+#Get the ref gene actual names instead of the Geneid
+rownames(combined_data_pir_ht) <- ifelse(
+  rownames(combined_data_pir_ht) %in% housekeeping_genes[1,],
+  colnames(housekeeping_genes)[ match(rownames(combined_data_pir_ht), housekeeping_genes[1,]) ],
+  rownames(combined_data_pir_ht)
+)
+
+#Get the colour range
+maxcol <- ceiling(
+  max(
+    log2(1+combined_data_pir_ht[!colnames(combined_data_pir_ht) %in% 'subfam'])
+  ))
+
+#Sub-family annotation
+clade_info <- combined_data_pir_ht$subfam
+annotation_col <- c(clade_col, 'ref' = 'black')
+
+#Subfamily annotation
+
+clade_ha <- rowAnnotation(
+  'sub-family' = anno_simple(
+    clade_info,
+    col = annotation_col,
+  ),
+  annotation_name_gp = gpar(fontsize = 10)
+)
+
+#Subfamily name labels
+num_subfam <- cir_info %>% 
+  group_by(subfam) %>% 
+  summarise(num = n_distinct(Gene.ID))
+
+labels_subfam <- c(setNames(paste0(num_subfam$subfam, ' (n = ', num_subfam$num, ')'),
+                            num_subfam$subfam),
+                   'ref' = 'ref')
+
+ht <- Heatmap(
+  log2(1+combined_data_pir_ht[,!colnames(combined_data_pir_ht) %in% 'subfam']),
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_row_names = FALSE,
+  name = 'log(TPM+1)', 
+  col = colorRamp2(c(0,
+                     maxcol/4,
+                     maxcol/2,
+                     3*maxcol/4,
+                     maxcol),
+                   viridis(5)),
+  na_col = 'white', 
+  border = TRUE,
+  border_gp = gpar(lwd = 0.1),
+  column_names_gp = gpar(fontsize = 10),
+  row_dend_width = unit(3, "cm"),
+  width = unit(4.5, 'cm'),
+  height = unit(7,'cm'),
+  row_title_rot = 0,
+  row_title_gp = gpar(fontsize = 10),
+  row_split = forcats::fct_shift(
+    relevel(
+      as.factor(combined_data_pir_ht$subfam),
+      ref = 'ref')
+  ),
+  heatmap_legend_param = list(
+    labels_gp = gpar(fontsize = 10),
+    title_gp = gpar(fontsize = 10,
+                    fontface = 'bold'),
+    at = c(0,
+           maxcol/4,
+           maxcol/2,
+           3*maxcol/4,
+           maxcol)
+  )
+)
+
+clade_lgd <- Legend(
+  title = 'sub-family',
+  at = c(labels_subfam),
+  legend_gp = gpar(fill = annotation_col)
+)
+
+draw(ht, 
+     row_title_side = 'left',
+     column_title_side = 'bottom',
+     # heatmap_legend_side = 'right',
+     # annotation_legend_side = 'right',
+     # annotation_legend_list = list(clade_lgd),
+     merge_legend = TRUE)
+
+if(global_save_var){
+  pdf(file = 'Manuscript_Fig_subfam_heatmap.pdf',
+      height = 5,
+      width = 5)
+draw(ht, 
+     row_title_side = 'left',
+     column_title_side = 'bottom',
+     heatmap_legend_side = 'right',
+     # annotation_legend_side = 'right',
+     # annotation_legend_list = list(clade_lgd),
+     merge_legend = TRUE)
+  dev.off()
+}
+```
