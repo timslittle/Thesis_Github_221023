@@ -547,7 +547,13 @@ if(global_save_var){
 
 ```{r pca_pir}
 rownames_geneid <- chab_tpm.df$Geneid[chab_tpm.df$Geneid %in% cir_id]
-chab_tpm.df_forpca <- data.frame(select(filter(chab_tpm.df, Geneid %in% cir_id), -Geneid))
+chab_tpm.df_forpca <- data.frame(select(filter(chab_tpm.df, 
+                                               Geneid %in% cir_id), 
+                                        -Geneid))
+
+# To prove scale and centre function work:
+# filter(chab_tpm.df, Geneid %in% cir_id) %>% mutate(across(matches('rMT|SBP'), ~ 1e6*.x/sum(.x), .names = '{.col}_{.fn}')) %>% select(-Geneid) %>% apply(.,2, sum) -> chab_tpm.df_forpca
+
 rownames(chab_tpm.df_forpca) <- rownames_geneid
 chab_tpm.df_pca <- prcomp(chab_tpm.df_forpca, 
                               center = TRUE, 
@@ -594,6 +600,15 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
           legend.text = element_text(size = 7)) +
     ggtitle('PCA of pir genes')
 )
+
+if(global_save_var){
+  ggsave(filename = 'plots/pca_pir.png',
+          plot = plot,
+          dpi = 300,
+          width = 15,
+          height = 10,
+          units = 'cm')
+}
 
 ```
 
@@ -642,6 +657,49 @@ if(global_save_var){
           units = 'cm')
 }
   
+```
+
+```{r sbp-hi_barchart}
+  cir_plot <- chab_tpm.df %>% 
+    filter(Geneid %in% "PCHAS_1100300") %>% 
+    melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
+    # mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>%
+    mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
+           transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1]) %>% 
+    group_by(sample, time, transmission) %>% 
+    dplyr::summarise(sum_tpm = sum(tpm))
+
+y_scale <- seq(0, 
+               signif(ceiling(max(cir_plot$sum_tpm)), 
+                      digits = 2), 
+               length.out = 5)
+
+(
+  p <- ggplot(data = cir_plot, 
+              aes(x = time, 
+                  y = sum_tpm,
+                  fill = transmission)) +
+    stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "bar", width = 0.75, size = 0.25, position = 'dodge') +
+    scale_y_continuous(breaks = y_scale) +
+    scale_fill_manual(values = cbPalette) +
+    geom_point(stat = 'identity', position = position_dodge(width = 0.75)) +
+    ylab(as.expression(bquote('Total SBP-high '~italic(.('pir'))~'TPM'))) +
+    xlab('Asexual blood stage development cycle') +
+    theme_classic() +
+    theme(axis.text.x=element_text(angle = 90, 
+                                   vjust = 0.5,
+                                   size = 12))
+)
+
+if(global_save_var){
+  ggsave(filename = 'plots/SBP-hi_Pir_BarChart.pdf',
+          plot = p,
+          dpi = 300,
+          width = 15,
+          height = 10,
+          units = 'cm')
+}
 ```
 
 ```{r all_pir_barchart}
