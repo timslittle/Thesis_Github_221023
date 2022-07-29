@@ -545,6 +545,58 @@ if(global_save_var){
 }
 ```
 
+```{r pca_pir}
+rownames_geneid <- chab_tpm.df$Geneid[chab_tpm.df$Geneid %in% cir_id]
+chab_tpm.df_forpca <- data.frame(select(filter(chab_tpm.df, Geneid %in% cir_id), -Geneid))
+rownames(chab_tpm.df_forpca) <- rownames_geneid
+chab_tpm.df_pca <- prcomp(chab_tpm.df_forpca, 
+                              center = TRUE, 
+                              scale. = TRUE)
+
+chab_tpm.df_pca_var <- get_pca_var(chab_tpm.df_pca)
+chab_tpm.df_pca_coords <- data.frame(chab_tpm.df_pca_var$coord)
+
+chab_tpm.df_pca_coords <- data.frame(sample = rownames(chab_tpm.df_pca_var$coord),
+                                        PC1 = chab_tpm.df_pca_coords$Dim.1,
+                                        PC3 = chab_tpm.df_pca_coords$Dim.3,
+                                        PC2 = chab_tpm.df_pca_coords$Dim.2) %>% 
+  dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
+  mutate( transmission = str_split_fixed(stage, pattern = '_', n = 2)[,1],
+          time = str_extract(stage,pattern = '[[:digit:]]{1,2}h|sch.culture')) 
+
+colornames <- viridis(length(unique(chab_tpm.df_pca_coords$time)))
+colornames <- setNames(colornames, 
+                       sort(unique(chab_tpm.df_pca_coords$time)))
+
+
+pca_importance <- as.data.frame(summary(chab_tpm.df_pca)$importance)
+pc1_importance <- round(pca_importance$PC1[2]*100, digits = 1)
+pc2_importance <- round(pca_importance$PC2[2]*100, digits = 1)
+pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
+
+(
+  plot <- ggplot(chab_tpm.df_pca_coords,
+                 aes(
+                   x = PC1,
+                   y = PC2,
+                   col = time,
+                   shape = transmission
+                 )) +
+    geom_point(size = 3,
+               alpha = 0.8) +
+    scale_color_manual(values = colornames) +
+    xlab(paste0('PC1 ', round(pca_importance$PC1[2]*100, digits = 1),'%')) +
+    ylab(paste0('PC2 ', round(pca_importance$PC2[2]*100, digits = 1),'%')) +
+    guides(shape=guide_legend(ncol=2),
+           col = guide_legend(ncol=2)) +
+    theme_classic() +
+    theme(legend.key.size = unit(4, 'mm'),
+          legend.text = element_text(size = 7)) +
+    ggtitle('PCA of pir genes')
+)
+
+```
+
 
 # Bar chart of ancestral _pir_ expression.
 
@@ -576,7 +628,7 @@ y_scale <- seq(0,
     ylab(as.expression(bquote('Total ancestral '~italic(.('pir'))~'TPM'))) +
     xlab('Asexual blood stage development cycle') +
     theme_classic() +
-    theme(axis.text.x=element_text(angle = 0, 
+    theme(axis.text.x=element_text(angle = 90, 
                                    vjust = 0.5,
                                    size = 12))
 )
