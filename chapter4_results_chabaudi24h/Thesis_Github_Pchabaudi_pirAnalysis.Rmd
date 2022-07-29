@@ -578,7 +578,7 @@ y_scale <- seq(0,
     theme_classic() +
     theme(axis.text.x=element_text(angle = 0, 
                                    vjust = 0.5,
-                                   size = 10))
+                                   size = 12))
 )
 
 if(global_save_var){
@@ -626,18 +626,23 @@ y_scale <- seq(0,
     ylab(as.expression(bquote('Total '~italic(.('pir'))~'TPM'))) +
     xlab('Asexual blood stage development cycle') +
     theme_classic() +
+    guides(fill = guide_legend(title = 'Subfamily')) +
     theme(axis.text.x=element_text(angle = 90, 
                                    vjust = 0.5,
-                                   size = 7)) +
+                                   size = 10),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 15),
+          axis.title.x = element_text(size = 15),
+          strip.text = element_text(size = 15)) +
     facet_grid(~transmission, scales = 'free')
 )
 
 if(global_save_var){
-  ggsave(filename = 'plots/allPir_BarChart.pdf',
+  ggsave(filename = 'plots/allPir_stackedBarChart.pdf',
           plot = p,
           dpi = 300,
           width = 20,
-          height = 10,
+          height = 20,
           units = 'cm')
 }
   
