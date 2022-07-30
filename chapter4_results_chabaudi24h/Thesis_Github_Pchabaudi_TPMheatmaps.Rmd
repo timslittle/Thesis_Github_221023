@@ -414,9 +414,9 @@ clade_lgd <- Legend(
 
 
 if(global_save_var){
-  pdf(file = 'Manuscript_Fig_subfam_heatmap.pdf',
+  pdf(file = 'plots/subfam_TPMheatmap.pdf',
       height = 5,
-      width = 5)
+      width = 8)
   draw(ht.list, 
        row_title_side = 'left',
        column_title_side = 'bottom',
