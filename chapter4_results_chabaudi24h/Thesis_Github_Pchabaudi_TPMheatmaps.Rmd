@@ -263,38 +263,8 @@ combined_data_pir <-  filter(chab_tpm_avg.df,
 
 ```
 
-```{r}
-#Ordering that a more understandable order
-
-combined_data_ordered <- tibble(Geneid = names(apply(combined_data_pir, 1, mean)),
-                                means = apply(combined_data_pir, 1, mean),
-                                subfam = factor(
-                                  ifelse(rownames(combined_data_pir) %in% cir_id,
-                                         cir_info$subfam[match(rownames(combined_data_pir), 
-                                                               cir_info$Geneid)],
-                                         'ref')
-                                )) %>% 
-  mutate(subfam =
-           forcats::fct_shift(
-             relevel(
-               as.factor(subfam),
-               ref = 'ref')
-           )
-  ) %>% 
-  # filter(means > 1) %>% 
-  arrange(subfam, 
-          desc(means)) %>% 
-  .$Geneid
-
-#Order the heatmap data by the order defined above (Subfam, then mean expression).
-combined_data_pir_ht <- combined_data_pir[
-  order(
-    match(rownames(combined_data_pir),
-          combined_data_ordered),
-    na.last = NA #Remove NAs
-  ),
-]
-
+```{r heatmap_df}
+combined_data_pir_ht <- combined_data_pir
 #Change the colnames to the times
 colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
                                               pattern = '.{3}_([[:digit:]]{2}h|sch.culture)')
@@ -302,9 +272,12 @@ colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
 #Order by time point
 combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
                                              drop = FALSE] 
-```
 
-```{r}
+#Add mean column for ordering
+combined_data_pir_ht$mean_tpm <- apply(combined_data_pir_ht, 1, mean)
+
+combined_data_pir_ht <- arrange(combined_data_pir_ht, desc(mean_tpm))
+
 #Add a column for the subfam (ref for the reference genes)
 combined_data_pir_ht$subfam <- ifelse(rownames(combined_data_pir_ht) %in% cir_id,
                                       cir_info$subfam_num[match(rownames(combined_data_pir_ht), 
