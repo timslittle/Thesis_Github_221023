@@ -95,6 +95,28 @@ cir_id <- cir_info$Geneid
 
 cir_clade_info <- read_delim('../standard_files/Pchabaudi_pir_clades.txt',
             delim = '\t')
+
+#Add chapl_aapl/subfam numbers for easier heatmap drawing later.
+cir_info <- cir_info %>% 
+  group_by(chapl_aapl_name) %>% 
+  mutate(chapl_aapl_name_num = n_distinct(Geneid)) %>% 
+  mutate(
+    chapl_aapl_name_num = paste0(
+      chapl_aapl_name, 
+      ' (n = ',
+      chapl_aapl_name_num,
+      ')'
+    )) %>% 
+  group_by(subfam) %>% 
+  mutate(subfam_num = n_distinct(Geneid)) %>% 
+  mutate(
+    subfam_num = paste0(
+      subfam, 
+      ' (n = ',
+      subfam_num,
+      ')'
+    )
+  )
 ```
 
 ```{r times_stages_labels}
@@ -275,7 +297,7 @@ combined_data_pir_ht <- combined_data_pir[
 
 #Change the colnames to the times
 colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
-                                              pattern = '[[:digit:]]{2}h')
+                                              pattern = '.{3}_([[:digit:]]{2}h|sch.culture)')
 
 #Order by time point
 combined_data_pir_ht <- combined_data_pir_ht[,order(colnames(combined_data_pir_ht)),
@@ -324,44 +346,65 @@ num_subfam <- cir_info %>%
 labels_subfam <- c(setNames(paste0(num_subfam$subfam, ' (n = ', num_subfam$num, ')'),
                             num_subfam$subfam),
                    'ref' = 'ref')
+```
 
-ht <- Heatmap(
-  log2(1+combined_data_pir_ht[,!colnames(combined_data_pir_ht) %in% 'subfam']),
-  cluster_rows = FALSE,
-  cluster_columns = FALSE,
-  show_row_names = FALSE,
-  name = 'log(TPM+1)', 
-  col = colorRamp2(c(0,
-                     maxcol/4,
-                     maxcol/2,
-                     3*maxcol/4,
-                     maxcol),
-                   viridis(5)),
-  na_col = 'white', 
-  border = TRUE,
-  border_gp = gpar(lwd = 0.1),
-  column_names_gp = gpar(fontsize = 10),
-  row_dend_width = unit(3, "cm"),
-  width = unit(4.5, 'cm'),
-  height = unit(7,'cm'),
-  row_title_rot = 0,
-  row_title_gp = gpar(fontsize = 10),
-  row_split = forcats::fct_shift(
-    relevel(
-      as.factor(combined_data_pir_ht$subfam),
-      ref = 'ref')
-  ),
-  heatmap_legend_param = list(
-    labels_gp = gpar(fontsize = 10),
-    title_gp = gpar(fontsize = 10,
-                    fontface = 'bold'),
-    at = c(0,
-           maxcol/4,
-           maxcol/2,
-           3*maxcol/4,
-           maxcol)
-  )
-)
+```{r draw_heatmap}
+ht.list <- lapply(c('rMT', 'SBP'),
+                  function(transmission){
+                    
+                    ht.df <- combined_data_pir_ht[
+                      ,
+                      grepl(colnames(combined_data_pir_ht), 
+                            pattern = paste0(transmission))
+                    ]
+                    
+                    colnames(ht.df) <- str_remove(colnames(ht.df),
+                                                  pattern = paste0(transmission, 
+                                                                   '_'))
+                    
+                    ht <- Heatmap(
+                      log2(
+                        1+ht.df
+                      ),
+                      cluster_rows = FALSE,
+                      cluster_columns = FALSE,
+                      show_row_names = FALSE,
+                      name = 'log(TPM+1)', 
+                      col = colorRamp2(c(0,
+                                         maxcol/4,
+                                         maxcol/2,
+                                         3*maxcol/4,
+                                         maxcol),
+                                       viridis(5)),
+                      na_col = 'white', 
+                      border = TRUE,
+                      border_gp = gpar(lwd = 0.1),
+                      column_names_gp = gpar(fontsize = 10),
+                      row_dend_width = unit(3, "cm"),
+                      width = unit(4.5, 'cm'),
+                      height = unit(7,'cm'),
+                      row_title_rot = 0,
+                      row_title_gp = gpar(fontsize = 10),
+                      row_split = forcats::fct_shift(
+                        relevel(
+                          as.factor(combined_data_pir_ht$subfam),
+                          ref = 'ref')
+                      ),
+                      heatmap_legend_param = list(
+                        labels_gp = gpar(fontsize = 10),
+                        title_gp = gpar(fontsize = 10,
+                                        fontface = 'bold'),
+                        at = c(0,
+                               maxcol/4,
+                               maxcol/2,
+                               3*maxcol/4,
+                               maxcol)
+                      )
+                    )
+                    return(ht)
+                  })
+
+ht.list <- Reduce('+', ht.list)
 
 clade_lgd <- Legend(
   title = 'sub-family',
@@ -369,25 +412,16 @@ clade_lgd <- Legend(
   legend_gp = gpar(fill = annotation_col)
 )
 
-draw(ht, 
-     row_title_side = 'left',
-     column_title_side = 'bottom',
-     # heatmap_legend_side = 'right',
-     # annotation_legend_side = 'right',
-     # annotation_legend_list = list(clade_lgd),
-     merge_legend = TRUE)
 
 if(global_save_var){
   pdf(file = 'Manuscript_Fig_subfam_heatmap.pdf',
       height = 5,
       width = 5)
-draw(ht, 
-     row_title_side = 'left',
-     column_title_side = 'bottom',
-     heatmap_legend_side = 'right',
-     # annotation_legend_side = 'right',
-     # annotation_legend_list = list(clade_lgd),
-     merge_legend = TRUE)
+  draw(ht.list, 
+       row_title_side = 'left',
+       column_title_side = 'bottom',
+       heatmap_legend_side = 'right',
+       merge_legend = TRUE)
   dev.off()
 }
 ```
