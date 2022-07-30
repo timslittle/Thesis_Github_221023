@@ -383,6 +383,7 @@ ht.list <- lapply(c('rMT', 'SBP'),
                       row_dend_width = unit(3, "cm"),
                       width = unit(4.5, 'cm'),
                       height = unit(7,'cm'),
+                      column_title = paste(transmission),
                       row_title_rot = 0,
                       row_title_gp = gpar(fontsize = 10),
                       row_split = forcats::fct_shift(
@@ -411,7 +412,6 @@ clade_lgd <- Legend(
   at = c(labels_subfam),
   legend_gp = gpar(fill = annotation_col)
 )
-
 
 if(global_save_var){
   pdf(file = 'plots/subfam_TPMheatmap.pdf',
