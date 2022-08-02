@@ -254,7 +254,7 @@ cir_housekeeping_id <- c(cir_id,
 
 # Get order of pir genes by highest expressed genes in each sample.
 
-combined_data_pir <-  filter(chab_tpm_avg.df,
+combined_data_pir_ht <-  filter(chab_tpm_avg.df,
                              Geneid %in% cir_housekeeping_id) %>% 
   column_to_rownames(var = 'Geneid') %>% 
   filter_all(
@@ -264,7 +264,6 @@ combined_data_pir <-  filter(chab_tpm_avg.df,
 ```
 
 ```{r heatmap_df}
-combined_data_pir_ht <- combined_data_pir
 #Change the colnames to the times
 colnames(combined_data_pir_ht) <- str_extract(colnames(combined_data_pir_ht),
                                               pattern = '.{3}_([[:digit:]]{2}h|sch.culture)')
