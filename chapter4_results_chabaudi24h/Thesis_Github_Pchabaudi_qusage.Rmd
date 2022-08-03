@@ -1,0 +1,384 @@
+---
+title: "Manuscript_Github_Pchabaudi_boilerplate"
+author: "Timothy Little"
+date: "29/07/2022"
+output: html_document
+---
+
+Looking at GO enrichment of genes in- and out-of-phase between the 24 asexual life cycles of rMT and SBP transmitted P. chabaudi.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+knitr::opts_knit$set(root.dir = 
+                       ".")
+#Note that the above doesn't give an error if the dir doesn't exist
+
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+
+library('readr')
+library('dplyr')
+library('ggplot2')
+library("RColorBrewer")
+library('data.table')
+library('tibble')
+library('stringr')
+library('kableExtra')
+library('viridis')
+library('reshape2')
+library('ComplexHeatmap')
+library('circlize') # for circular plots and colour
+library("factoextra")
+library("MatrixGenerics") # for rowMins and rowMax
+library('qusage')
+
+#Colour blind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+#Want the defaults for arrange, mutate and summarise to be from dplyr
+arrange <- dplyr::arrange
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+select <- dplyr::select
+
+#Global save var - set to TRUE if you want to save figures.
+global_save_var <- FALSE
+```
+
+```{r sourcing_functions}
+source('../rfunctions/uniquify_fun.R')
+source('../rfunctions/ordering_fun.R')
+source('../rfunctions/tpm_fun.R')
+source('../rfunctions/usefulFunctions_mround_my-max_firstup_fun.R')
+source('../rfunctions/draw_heatmap_zscore.R')
+```
+
+```{r ordering_vec}
+order_vector <- c("Early.Rings",
+                  "Early.Mid.Rings",
+                  "Late.Mid.Rings",
+                  "Late.Rings",
+                  "Rings.Troph.conversion",
+                  "Early.Trophs",
+                  "Mid.Trophs",
+                  "Late.Trophs")
+```
+
+```{r cir_id, message=FALSE, results='hide'}
+# The _cir_ gene names were downloaded using a search of PlasmoDB _P. chabaudi_ genome. _cir_ genes are the names of _pir_ genes in _P chabaudi_.
+# Getting the cir gene names and transcript lengths needed for calculating the transcript-per-million
+
+chabaudi_gene_info <- read.csv('../standard_files/PlasmoDB-47_beta_Pchabaudichabaudi_GenesByTaxon_Summary.csv',
+                              header = TRUE,
+                              stringsAsFactors = FALSE)
+
+chabaudi_transcript_lengths <- select(chabaudi_gene_info, c(Gene.ID, Transcript.Length)) %>% 
+  arrange(Gene.ID)
+
+chabaudi_gene_info <- dplyr::rename(chabaudi_gene_info, 
+                             Geneid = Gene.ID,
+                             Description = Product.Description)
+
+```
+
+```{r cir_info}
+
+cir_info <- read_delim('../standard_files/Pchabaudi_cir_info.txt',
+           delim = '\t')
+cir_id <- cir_info$Geneid
+
+cir_clade_info <- read_delim('../standard_files/Pchabaudi_pir_clades.txt',
+            delim = '\t')
+```
+
+```{r times_stages_labels}
+#Use the RMT stage differential count in order to name the samples, but keep time to retain order
+times_stages_table <- data.frame(time = c('02h', '05h', '08h', '11h', '14h', '17h','20h','23h'),
+                                 stage_diff_count = c('Late-Rings',
+                                                      'Rings-Troph-conversion',
+                                                      'Early-Trophs',
+                                                      'Mid-Trophs',
+                                                      'Late-Trophs',
+                                                      'Early-Rings',
+                                                      'Early-Mid-Rings',
+                                                      'Late-Mid-Rings'))
+# R will convert the dashes to '.' at some point so let's have this notation here also
+times_stages_table$r_stage_diff_count <- str_replace_all(times_stages_table$stage_diff_count, 
+                                                         pattern = '-', 
+                                                         replacement = '\\.')
+#Add a number from 1 to 8 for each stage, useful for phase calculations
+times_stages_table$num <- 1:8
+```
+
+```{r colours_clades_phase}
+SorL_col <- setNames(
+  c(    '#F0E442',
+        '#56B4E9', #L
+        '#E69F00', #S
+        '#999999'),
+  sort(
+    unique(cir_info$SorL)
+  )
+)
+
+SorL_col_num <- SorL_col
+names(SorL_col_num) <- sapply(names(SorL_col), 
+                              function(clade_name) {
+                                paste0(
+                                  clade_name, 
+                                  ' (n = ',
+                                  sum(cir_info$SorL == clade_name),
+                                  ')'
+                                )
+                              })
+
+clade_col <- setNames(
+  c('#F0E442',
+    '#56B4E9', #L1
+    '#009E73',
+    '#0072B2',
+    '#E69F00', #S1
+    '#D55E00',
+    '#CC79A7',
+    '#999999'),
+  sort(
+    unique(cir_info$subfam)
+  )
+)
+
+clade_col_num <- clade_col
+names(clade_col_num) <- sapply(names(clade_col), 
+                               function(clade_name) {
+                                 paste0(
+                                   clade_name, 
+                                   ' (n = ',
+                                   sum(cir_info$subfam == clade_name),
+                                   ')'
+                                 )
+                               })
+
+chapl_aapl_name_col <- setNames(
+  c('#F0E442',
+    '#56B4E9', #L1
+    '#009E73',
+    '#0072B2',
+    '#E69F00', #S1
+    '#D55E00',
+    '#CC79A7',
+    '#999999'),
+  sort(
+    unique(cir_info$chapl_aapl_name)
+  )
+)
+
+
+chapl_aapl_name_col_num <- chapl_aapl_name_col
+names(chapl_aapl_name_col_num) <- sapply(
+  names(chapl_aapl_name_col), 
+  function(clade_name) {
+    paste0(
+      clade_name, 
+      ' (n = ',
+      sum(cir_info$chapl_aapl_name == clade_name, 
+          na.rm = TRUE),
+      ')'
+    )
+  })
+```
+
+```{r read_TPM}
+#Need to use the calculateTPM script first.
+
+chab_tpm.df <- read_csv('data/Pchabaudi_TPM_all.csv')
+
+chab_tpm_avg.df <- read_csv('data/Pchabaudi_TPM_average.csv')
+
+# chab_tpm_avg.list <- list(
+#   'RMT' = list(
+#     tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
+#                                 pattern = 'rMT|Geneid')],
+#     experiment = 'RMT'
+#   ),
+#   'SBP' = list(
+#     tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
+#                                 pattern = 'SBP|Geneid')],
+#     experiment = 'SBP'
+#   )
+# )
+
+```
+
+```{r df}
+#Filter low expressed genes (greater than 10 tpm in at least one sample), convert to a matrix, add 1 for the log transformation, then transform to log2
+chab_tpm.df <-column_to_rownames(chab_tpm.df, var = 'Geneid')
+chab_tpm.df <- chab_tpm.df[apply(chab_tpm.df, 1, function(x) {any(x >= 10)}),]
+chab_tpm_log2plus1.mat <- chab_tpm.df %>% 
+  as.matrix %>% 
+  `+`(.+1) %>% 
+  log(base = 2)
+chab_tpm_log2plus1.mat[1:5,1:5]
+```
+
+```{r generate_labels}
+#Use make.names to remove the '-' from the labels
+colnames(chab_tpm_log2plus1.mat) <- make.names(colnames(chab_tpm_log2plus1.mat))
+```
+
+Removing genesets with < 3 members.
+
+```{r generate_genesets}
+pir_geneset <- list(pirs = cir_info$Geneid)
+
+subfam_list <- lapply(unique(cir_info$subfam), 
+                      function(clade_nam) filter(cir_info, 
+                                                 subfam == clade_nam)$Geneid)
+names(subfam_list) <- unique(cir_info$subfam)
+subfam_list <- subfam_list[unlist(lapply(subfam_list, 
+                                         function(x) length(x) > 3))]
+
+ShortLong_list <- 
+  lapply(unique(cir_info$SorL), 
+         function(SorL_nam) filter(cir_info, 
+                                   SorL == SorL_nam)$Geneid)
+names(ShortLong_list) <- unique(cir_info$SorL)
+ShortLong_list <- ShortLong_list[unlist(lapply(ShortLong_list, 
+                                               function(x) length(x) > 3))]
+order_path.names <- ordering(c('pirs', unique(cir_info$SorL), sort(unique(cir_info$subfam))), 
+                             order_vector = c('pir','L','S'))
+
+locus_list <- 
+  lapply(unique(cir_info$chapl_aapl_name), 
+         function(chapl_aapl_name_nam) filter(cir_info, 
+                                   chapl_aapl_name == chapl_aapl_name_nam)$Geneid)
+names(locus_list) <- unique(cir_info$chapl_aapl_name)
+locus_list <- locus_list[unlist(lapply(locus_list, 
+                                               function(x) length(x) > 3))]
+
+```
+
+Which comparisons do I want to make?
+
+```{r running_qusage}
+ordered_stages <- ordering(unique(lifeCycle_labels),
+         order_vector = times_stages_table$time)
+#Remove sch.culture from the comparisons for now.
+ordered_stages <- ordered_stages[!ordered_stages == 'sch.culture']
+comparisons <- c(
+  unlist(
+    lapply(seq_along(ordered_stages),
+           function(i){ 
+             if(i < length(ordered_stages)){ 
+               paste0(ordered_stages[i+1],'-',ordered_stages[i]) 
+             } else {
+               #When at the end, want it to cycle back round
+               paste0(ordered_stages[1],'-',ordered_stages[i]) 
+             } 
+           }
+    )
+  )
+)
+```
+
+Compare the gene lists between the same stages in different transmission
+
+```{r qusage_stagesBetweenTransmission}
+
+comparisons_stagesTrans <- paste0(paste('rMT', 
+                                        times_stages_table$time, 
+                                        sep = '_'),
+                                  '-',
+                                  paste('SBP', 
+                                        times_stages_table$time, 
+                                        sep = '_'))
+
+comp_stagesTrans.mat <- chab_tpm_log2plus1.mat[
+  ,!grepl(colnames(chab_tpm_log2plus1.mat), pattern = 'sch.culture')
+]
+# For the life cycle labels then extract the transmission + timepoint label
+lifeCycle_labels <- str_extract(colnames(comp_stagesTrans.mat),
+                                pattern = '^(rMT|SBP)_([[:digit:]]{2}h|sch.culture)')
+
+all_comparisons <- lapply(comparisons_stagesTrans, 
+                          function(comparison){
+                            print(comparison)
+                            list_comp <- lapply(
+                              list(pir_geneset,
+                                   ShortLong_list,
+                                   subfam_list,
+                                   locus_list), 
+                              function(gene_list){
+                                print(deparse(substitute(gene_list)))
+                                qs.results.subfam <- qusage(comp_stagesTrans.mat,
+                                                            lifeCycle_labels,
+                                                            comparison,
+                                                            gene_list,
+                                                            n.points = 2^18)
+                                list(results = qs.results.subfam, 
+                                     qstable = qsTable(qs.results.subfam) %>% 
+                                       mutate(contrast = qs.results.subfam$contrast))
+                              })
+                            names(list_comp) <- c('pir', 'shortlong', 'subfam', 'locus')
+                            list_comp$combined <- bind_rows(lapply(list_comp, 
+                                                                   getElement, 
+                                                                   'qstable'))
+                            return(list_comp)
+                          })
+names(all_comparisons) <- comparisons
+
+all_comparisons.df <- bind_rows(lapply(all_comparisons, 
+                                       function(x) bind_rows(lapply(x, 
+                                                                    function(y) y$qstable)))) %>% 
+  arrange(pathway.name)
+
+stagesTrans_ht.mat <- filter(all_comparisons.df, FDR < 0.05) %>% 
+  mutate(pathway.name = factor(pathway.name, 
+                           levels = ordering(pathway.name, 
+                                             order_vector = c('pirs', 'L', 'S', 'AAPL', 'ChAPL')))) %>% 
+  arrange(pathway.name) %>% 
+  melt(id.vars = c('contrast', 'pathway.name'),
+       measure.vars  = c('log.fold.change')) %>% 
+  dcast(contrast ~ pathway.name, 
+        value.var = 'value') %>% 
+  column_to_rownames('contrast') %>% 
+  as.matrix
+
+maxcol <- my_max(stagesTrans_ht.mat)
+mincol <- my_max(stagesTrans_ht.mat*-1)*-1
+
+ht <- Heatmap(stagesTrans_ht.mat,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        cluster_column_slices = FALSE,
+        na_col = 'white',
+        column_split = factor(str_extract(colnames(stagesTrans_ht.mat),
+                                   pattern = 'pirs|^L|^S|AAPL|ChAPL'),
+                              levels = unique(str_extract(colnames(stagesTrans_ht.mat),
+                                   pattern = 'pirs|^L|^S|AAPL|ChAPL'))),
+        column_order = colnames(stagesTrans_ht.mat),
+        column_gap = unit(.5,"cm"),
+        border = TRUE,
+        col = colorRamp2(c(mincol,
+                           0,
+                           maxcol/4,
+                           maxcol/2,
+                           maxcol),
+                         c('dodgerblue1', 'white', 'yellow', 'orange', 'red')),
+        heatmap_legend_param = list(title = 'LogFoldChange'))
+
+if(global_save_var){
+  pdf(file = 'plots/stageTrans_logFoldheatmap.pdf',
+      height = 8,
+      width = 6)
+  draw(ht)
+  dev.off()
+}
+
+
+```
