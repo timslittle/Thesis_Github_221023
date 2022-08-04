@@ -18,6 +18,9 @@ knitr::opts_knit$set(root.dir =
 #Note that the above doesn't give an error if the dir doesn't exist
 
 options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+
+#Set random seed for reproducible randomisation
+set.seed(34576)
 ```
 
 ```{r loading_packages, include = FALSE, message = FALSE}
@@ -352,17 +355,18 @@ stagesTrans_ht.mat <- filter(all_comparisons.df, FDR < 0.05) %>%
 maxcol <- my_max(stagesTrans_ht.mat)
 mincol <- my_max(stagesTrans_ht.mat*-1)*-1
 
-ht <- Heatmap(stagesTrans_ht.mat,
+ht <- Heatmap(t(stagesTrans_ht.mat),
         cluster_rows = FALSE,
         cluster_columns = FALSE,
         cluster_column_slices = FALSE,
         na_col = 'white',
-        column_split = factor(str_extract(colnames(stagesTrans_ht.mat),
+        row_split = factor(str_extract(colnames(stagesTrans_ht.mat),
                                    pattern = 'pirs|^L|^S|AAPL|ChAPL'),
                               levels = unique(str_extract(colnames(stagesTrans_ht.mat),
                                    pattern = 'pirs|^L|^S|AAPL|ChAPL'))),
-        column_order = colnames(stagesTrans_ht.mat),
-        column_gap = unit(.5,"cm"),
+        row_order = colnames(stagesTrans_ht.mat),
+        row_gap = unit(.5,"cm"),
+        row_names_gp = gpar(fontsize = 9),
         border = TRUE,
         col = colorRamp2(c(mincol,
                            0,
