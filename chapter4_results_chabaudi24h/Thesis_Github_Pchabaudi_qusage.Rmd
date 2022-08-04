@@ -353,13 +353,16 @@ stagesTrans_ht.mat <- filter(all_comparisons.df, FDR < 0.05) %>%
   as.matrix
 
 maxcol <- my_max(stagesTrans_ht.mat)
+#Multiply by minus one to use my_max to get the most negative value
 mincol <- my_max(stagesTrans_ht.mat*-1)*-1
 
+#Transpose the matrix so that the stages (comparison) are on the x axis like other figures.
 ht <- Heatmap(t(stagesTrans_ht.mat),
         cluster_rows = FALSE,
         cluster_columns = FALSE,
         cluster_column_slices = FALSE,
         na_col = 'white',
+        #Use factors to keep the ordering that we want.
         row_split = factor(str_extract(colnames(stagesTrans_ht.mat),
                                    pattern = 'pirs|^L|^S|AAPL|ChAPL'),
                               levels = unique(str_extract(colnames(stagesTrans_ht.mat),
@@ -368,6 +371,8 @@ ht <- Heatmap(t(stagesTrans_ht.mat),
         row_gap = unit(.5,"cm"),
         row_names_gp = gpar(fontsize = 9),
         border = TRUE,
+        #Using this colour scheme because mincol is a lot less negative 
+        # than maxcol is positive
         col = colorRamp2(c(mincol,
                            0,
                            maxcol/4,
