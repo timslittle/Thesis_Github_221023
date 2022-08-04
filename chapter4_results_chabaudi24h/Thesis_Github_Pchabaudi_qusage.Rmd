@@ -266,29 +266,6 @@ locus_list <- locus_list[unlist(lapply(locus_list,
 
 ```
 
-Which comparisons do I want to make?
-
-```{r running_qusage}
-ordered_stages <- ordering(unique(lifeCycle_labels),
-         order_vector = times_stages_table$time)
-#Remove sch.culture from the comparisons for now.
-ordered_stages <- ordered_stages[!ordered_stages == 'sch.culture']
-comparisons <- c(
-  unlist(
-    lapply(seq_along(ordered_stages),
-           function(i){ 
-             if(i < length(ordered_stages)){ 
-               paste0(ordered_stages[i+1],'-',ordered_stages[i]) 
-             } else {
-               #When at the end, want it to cycle back round
-               paste0(ordered_stages[1],'-',ordered_stages[i]) 
-             } 
-           }
-    )
-  )
-)
-```
-
 Compare the gene lists between the same stages in different transmission
 
 ```{r qusage_stagesBetweenTransmission}
@@ -342,8 +319,12 @@ all_comparisons.df <- bind_rows(lapply(all_comparisons,
 
 stagesTrans_ht.mat <- filter(all_comparisons.df, FDR < 0.05) %>% 
   mutate(pathway.name = factor(pathway.name, 
-                           levels = ordering(pathway.name, 
-                                             order_vector = c('pirs', 'L', 'S', 'AAPL', 'ChAPL')))) %>% 
+                               levels = ordering(pathway.name, 
+                                                 order_vector = c('pirs', 
+                                                                  'L', 
+                                                                  'S', 
+                                                                  'AAPL', 
+                                                                  'ChAPL')))) %>% 
   arrange(pathway.name) %>% 
   melt(id.vars = c('contrast', 'pathway.name'),
        measure.vars  = c('log.fold.change')) %>% 
@@ -388,6 +369,152 @@ if(global_save_var){
   draw(ht)
   dev.off()
 }
+```
 
+Compare between stages within the same transmission method.
+
+```{r qusage_transStage}
+ordered_stages <- ordering(unique(lifeCycle_labels),
+         order_vector = times_stages_table$time)
+#Remove sch.culture from the comparisons for now.
+ordered_stages <- ordered_stages[!ordered_stages == 'sch.culture']
+comparisons_transStage.list <- lapply(c('rMT','SBP'), function(transmission){
+  #Getting the comparisons across the time points for each transmission
+  ordered_stages_trans <- str_subset(ordered_stages,
+                               pattern = transmission)
+  comparisons <- c(
+    unlist(
+      lapply(seq_along(ordered_stages_trans),
+             function(i){ 
+               if(i < length(ordered_stages_trans)){ 
+                 paste0(ordered_stages_trans[i+1],'-',ordered_stages_trans[i]) 
+               } else {
+                 #When at the end, want it to cycle back round
+                 paste0(ordered_stages_trans[1],'-',ordered_stages_trans[i]) 
+               } 
+             }
+      )
+    )
+  )
+})
+names(comparisons_transStage.list) <- c('rMT', 'SBP')
+
+
+# For the life cycle labels then extract the transmission + timepoint label
+lifeCycle_labels <- str_extract(colnames(comp_stagesTrans.mat),
+                                pattern = '^(rMT|SBP)_([[:digit:]]{2}h|sch.culture)')
+
+all_comparisons_transStage <- 
+  lapply(c('rMT', 'SBP'), 
+         function(transmission){
+           #Extract the comparisons for this transmission method
+           comparisons_transStage <- comparisons_transStage.list[[transmission]]
+           #Subset the dataset based on the transmission and removing sch.cultures
+           comp_transStage.mat <- chab_tpm_log2plus1.mat[
+             ,str_detect(colnames(chab_tpm_log2plus1.mat), pattern = paste0(transmission,'_(?!sch.culture)'))
+           ]
+           #Get appropriate life cycle labels from this.
+           lifeCycle_labels <- str_extract(colnames(comp_transStage.mat),
+                                pattern = '^(rMT|SBP)_([[:digit:]]{2}h|sch.culture)')
+           results_transStage.list <- lapply(comparisons_transStage, 
+                  function(comparison){
+                    print(comparison)
+                    list_comp <- lapply(
+                      list(pir_geneset,
+                           ShortLong_list,
+                           subfam_list,
+                           locus_list), 
+                      function(gene_list){
+                        print(deparse(substitute(gene_list)))
+                        qs.results.subfam <- qusage(comp_transStage.mat,
+                                                    lifeCycle_labels,
+                                                    comparison,
+                                                    gene_list,
+                                                    n.points = 2^18)
+                        list(results = qs.results.subfam, 
+                             qstable = qsTable(qs.results.subfam) %>% 
+                               mutate(contrast = qs.results.subfam$contrast))
+                      })
+                    names(list_comp) <- c('pir', 'shortlong', 'subfam', 'locus')
+                    list_comp$combined <- bind_rows(lapply(list_comp, 
+                                                           getElement, 
+                                                           'qstable'))
+                    return(list_comp)
+                  })
+           names(results_transStage.list) <- comparisons_transStage
+           return(results_transStage.list)
+         })
+names(all_comparisons_transStage) <- c('rMT', 'SBP')
+
+all_comparisons_transStage.df <- bind_rows(lapply(all_comparisons_transStage, 
+                                           function(z) bind_rows(
+                                             lapply(z, 
+                                                    function(x) bind_rows(
+                                                      lapply(x, 
+                                                             function(y) y$qstable)))))) %>% 
+  arrange(pathway.name)
 
 ```
+
+```{r heatmap_df_transStage}
+transStages_ht.mat <- filter(all_comparisons_transStage.df, FDR < 0.05) %>% 
+  mutate(pathway.name = factor(pathway.name, 
+                               levels = ordering(pathway.name, 
+                                                 order_vector = c('pirs', 
+                                                                  'L', 
+                                                                  'S', 
+                                                                  'AAPL', 
+                                                                  'ChAPL')))) %>% 
+  arrange(pathway.name) %>% 
+  melt(id.vars = c('contrast', 'pathway.name'),
+       measure.vars  = c('log.fold.change')) %>% 
+  dcast(contrast ~ pathway.name, 
+        value.var = 'value') %>% 
+  column_to_rownames('contrast') %>% 
+  as.matrix
+
+maxcol <- my_max(transStages_ht.mat)
+#Multiply by minus one to use my_max to get the most negative value
+mincol <- my_max(transStages_ht.mat*-1)*-1
+
+#Transpose the matrix so that the stages (comparison) are on the x axis like other figures.
+# Change the colnames of the transposed matrix so that they're just the times.
+# Will split the heatmap by rMT and SBP when drawing the heatmap.
+transStages_ht.mat.t <- t(transStages_ht.mat)
+colnames(transStages_ht.mat.t) <- str_remove_all(colnames(transStages_ht.mat.t),
+                                                 pattern = '(rMT|SBP)_')
+
+ht <- Heatmap(transStages_ht.mat.t,
+        cluster_rows = FALSE,
+        cluster_columns = FALSE,
+        cluster_column_slices = FALSE,
+        na_col = 'white',
+        #Use factors to keep the ordering that we want.
+        row_split = factor(str_extract(colnames(transStages_ht.mat),
+                                   pattern = 'pirs|^L|^S|AAPL|ChAPL'),
+                              levels = unique(str_extract(colnames(transStages_ht.mat),
+                                   pattern = 'pirs|^L|^S|AAPL|ChAPL'))),
+        row_order = colnames(transStages_ht.mat),
+        row_gap = unit(.5,"cm"),
+        row_names_gp = gpar(fontsize = 9),
+        column_split = factor(str_extract(rownames(transStages_ht.mat),
+                                   pattern = 'rMT|SBP'),
+                              levels = unique(str_extract(rownames(transStages_ht.mat),
+                                   pattern = 'rMT|SBP'))),
+        column_gap = unit(.3, "cm"),
+        border = TRUE,
+        #Using this colour scheme because mincol is a lot less negative 
+        # than maxcol is positive
+        col = colorRamp2(c(mincol,
+                           0,
+                           maxcol/4,
+                           maxcol/2,
+                           maxcol),
+                         c('blue', 'white', 'yellow', 'orange', 'red')),
+        heatmap_legend_param = list(title = 'LogFoldChange'))
+draw(ht)
+```
+
+
+
+
