@@ -1,11 +1,11 @@
 ---
-title: "Manuscript_Github_Pchabaudi_boilerplate"
+title: "Manuscript_Github_Pchabaudi_qusage"
 author: "Timothy Little"
 date: "29/07/2022"
 output: html_document
 ---
 
-Looking at GO enrichment of genes in- and out-of-phase between the 24 asexual life cycles of rMT and SBP transmitted P. chabaudi.
+Qusage analysis of gene set enrichment (e.g. pirs, L-forms, ChAPL loci) between the transmission methods and timepoints of the asexual life cycle.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, 
@@ -512,7 +512,13 @@ ht <- Heatmap(transStages_ht.mat.t,
                            maxcol),
                          c('blue', 'white', 'yellow', 'orange', 'red')),
         heatmap_legend_param = list(title = 'LogFoldChange'))
-draw(ht)
+if(global_save_var){
+  pdf(file = 'plots/stagesWithinTrans_logFoldheatmap.pdf',
+      height = 8,
+      width = 6)
+  draw(ht)
+  dev.off()
+}
 ```
 
 
