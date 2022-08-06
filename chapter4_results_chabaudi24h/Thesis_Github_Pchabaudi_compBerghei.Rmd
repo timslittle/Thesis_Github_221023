@@ -1,11 +1,11 @@
 ---
-title: "Manuscript_Github_Pchabaudi_boilerplate"
+title: "Manuscript_Github_Pchabaudi_compBerghei"
 author: "Timothy Little"
 date: "29/07/2022"
 output: html_document
 ---
 
-Looking at GO enrichment of genes in- and out-of-phase between the 24 asexual life cycles of rMT and SBP transmitted P. chabaudi.
+Comparing the P. chabaudi and P. berghei pir expression patterns for any similarities.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, 
@@ -90,7 +90,17 @@ chabaudi_gene_info <- dplyr::rename(chabaudi_gene_info,
 ```{r cir_info}
 
 cir_info <- read_delim('../standard_files/Pchabaudi_pir_info.txt',
-           delim = '\t')
+           delim = '\t') %>% 
+  group_by(subfam) %>% 
+  mutate(subfam_total_members = n_distinct(Geneid)) %>% 
+  mutate(
+    subfam_num = paste0(
+      subfam, 
+      ' (n = ',
+      subfam_total_members,
+      ')'
+    )
+  )
 cir_id <- cir_info$Geneid
 
 cir_clade_info <- read_delim('../standard_files/Pchabaudi_pir_clades.txt',
@@ -146,7 +156,7 @@ clade_col <- setNames(
     '#E69F00', #S1
     '#D55E00',
     '#CC79A7',
-    '#999999'),
+    'black'),
   sort(
     unique(cir_info$subfam)
   )
@@ -199,17 +209,160 @@ chab_tpm.df <- read_csv('data/Pchabaudi_TPM_all.csv')
 
 chab_tpm_avg.df <- read_csv('data/Pchabaudi_TPM_average.csv')
 
-chab_tpm_avg.list <- list(
-  'RMT' = list(
-    tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
-                                pattern = 'rMT|Geneid')],
-    experiment = 'RMT'
-  ),
-  'SBP' = list(
-    tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
-                                pattern = 'SBP|Geneid')],
-    experiment = 'SBP'
+# chab_tpm_avg.list <- list(
+#   'RMT' = list(
+#     tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
+#                                 pattern = 'rMT|Geneid')],
+#     experiment = 'RMT'
+#   ),
+#   'SBP' = list(
+#     tpm = chab_tpm_avg.df[,grepl(colnames(chab_tpm_avg.df), 
+#                                 pattern = 'SBP|Geneid')],
+#     experiment = 'SBP'
+#   )
+# )
+
+```
+
+```{r berghei_info}
+bir_clade <- read_delim('../standard_files/Pberghei_pir_clades.txt', 
+                        delim = '\t') %>% 
+  group_by(clade) %>% 
+  mutate(subfam_total_members = n_distinct(Geneid),
+         subfam_num = paste0(clade, ' (n = ', n_distinct(Geneid), ')'))
+bir_id <- bir_clade$Geneid
+
+bir_clade_col <- setNames(
+  c('#F0E442',
+    '#56B4E9',
+    '#009E73',
+    '#0072B2',
+    '#E69F00',
+    '#D55E00',
+    '#CC79A7',
+    '#999999',
+    'black',
+    'red'),
+  sort(
+   unique(bir_clade$clade)
   )
 )
 
+bir_clade_col_num <- bir_clade_col
+names(bir_clade_col_num) <- sapply(names(bir_clade_col), 
+                               function(clade_name) {
+                                 paste0(
+                                   clade_name, 
+                                   ' (n = ',
+                                   sum(bir_clade$clade == clade_name),
+                                   ')'
+                                 )
+                               })
 ```
+
+```{r berg_tpm}
+berghei_tpm <- read.csv('../chapter3_results_bergheiPir/berghei_tpm.csv', 
+                        row.names = 1)
+```
+
+
+```{r chab_subfam_normByGeneNum}
+chab_tpm_subfam.df.long <- chab_tpm.df %>% 
+  rownames_to_column('Geneid') %>% 
+  filter(Geneid %in% cir_id) %>% 
+  melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
+  mutate(subfam = cir_info$subfam_num[match(Geneid, cir_info$Geneid)],
+         transmission = str_extract(sample, pattern = 'rMT|SBP'),
+         time = str_extract(sample, '[[:digit:]]{2}h|sch.culture'),
+         name = paste0(time, str_extract(sample, 
+                                pattern = '(_[[:digit:]]$)')))
+
+ggplot(chab_tpm_subfam.df.long, 
+       aes(x = factor(name,
+                      levels = ordering(name, 
+                                        order_vector = c(times_stages_table$time, 'sch.culture'))),
+           y = tpm,
+           fill = subfam)) +
+  geom_col(position = "fill") +
+  scale_fill_manual(values = clade_col_num) +
+  facet_wrap(~transmission, scales = "free_x")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+Dividing the TPM by the number of genes in each sub-family to see TPM/gene.
+
+```{r normalised_subfam}
+
+subfam_number.table <- group_by(cir_info, subfam_num) %>% 
+  summarise(subfam_total_members = n_distinct(Geneid))
+
+#Don't use n_distinct(Geneid) to nornalise by number of genes in a subfam group
+# There has been some filtering so not all members are in the dataset.
+chab_tpm_subfam_norm.df.long <- chab_tpm_subfam.df.long %>% 
+  group_by(transmission, time, subfam) %>% 
+         mutate(norm_tpm = tpm / cir_info$subfam_total_members[match(Geneid, cir_info$Geneid)])
+
+ggplot(filter(chab_tpm_subfam_norm.df.long, 
+              !subfam == 'ancestral (n = 1)'), 
+       aes(x = factor(name,
+                      levels = ordering(name, 
+                                        order_vector = c(times_stages_table$time, 'sch.culture'))),
+           y = norm_tpm,
+           fill = subfam)) +
+  geom_col(position = "stack") +
+  facet_wrap(~transmission, scales = "free_x") +
+  scale_fill_manual(values = clade_col_num[!names(clade_col_num) == 'ancestral (n = 1)']) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+```{r berghei_subfam}
+berg_tpm_subfam.df.long <- berghei_tpm[,
+                                       c('Geneid',
+                                         str_subset(colnames(berghei_tpm), 
+                                                    pattern = 'Asex'))] %>% 
+  filter(Geneid %in% bir_id) %>% 
+  melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
+  mutate(subfam = bir_clade$subfam_num[match(Geneid, bir_clade$Geneid)],
+         experiment = str_extract(sample, pattern = '^E[[:digit:]]{2}'),
+         stage = str_extract(sample, 'Asex.+(?=_[[:digit:]])'),
+         name = str_extract(sample, 'Asex.+'))
+
+ggplot(berg_tpm_subfam.df.long, 
+       aes(x = factor(name,
+                      levels = ordering(name,
+                                        order_vector = c('Ring','Troph','Schiz','Mixed'))),
+           y = tpm,
+           fill = subfam)) +
+  geom_col(position = "fill") +
+  scale_fill_manual(values = bir_clade_col_num) +
+  facet_wrap(~experiment, scales = "free_x")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r berghei_subfam_normByGeneNum}
+
+#Don't use n_distinct(Geneid) to nornalise by number of genes in a subfam group
+# There has been some filtering so not all members are in the dataset.
+berg_tpm_subfam_norm.df.long <- berg_tpm_subfam.df.long %>% 
+  group_by(experiment, stage, subfam) %>% 
+  mutate(norm_tpm = tpm / bir_clade$subfam_total_members[match(Geneid, bir_clade$Geneid)])
+
+ggplot(filter(berg_tpm_subfam_norm.df.long, 
+              !subfam == 'ancestral (n = 1)'), 
+       aes(x = factor(name,
+                      levels = ordering(name, 
+                                        order_vector = c('Ring','Troph','Schiz','Mixed'))),
+           y = norm_tpm,
+           fill = subfam)) +
+  geom_col(position = "stack") +
+  facet_wrap(~experiment, scales = "free_x") +
+  scale_fill_manual(values = bir_clade_col_num[!names(bir_clade_col_num) %in% c('ancestral (n = 1)',
+                                                                                'S6 (n = 1)')]) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
