@@ -310,7 +310,9 @@ ggplot(filter(chab_tpm_subfam_norm.df.long,
                                         order_vector = c(times_stages_table$time, 'sch.culture'))),
            y = norm_tpm,
            fill = subfam)) +
-  geom_col(position = "stack") +
+  geom_col(position = "fill") +
+    xlab('stages') +
+  ylab('TPM per gene') +
   facet_wrap(~transmission, scales = "free_x") +
   scale_fill_manual(values = clade_col_num[!names(clade_col_num) == 'ancestral (n = 1)']) +
   theme_classic() +
@@ -328,7 +330,7 @@ berg_tpm_subfam.df.long <- berghei_tpm[,
   mutate(subfam = bir_clade$subfam_num[match(Geneid, bir_clade$Geneid)],
          experiment = str_extract(sample, pattern = '^E[[:digit:]]{2}'),
          stage = str_extract(sample, 'Asex.+(?=_[[:digit:]])'),
-         name = str_extract(sample, 'Asex.+'))
+         name = str_extract(sample, '(?<=Asex\\.).+'))
 
 ggplot(berg_tpm_subfam.df.long, 
        aes(x = factor(name,
@@ -337,6 +339,7 @@ ggplot(berg_tpm_subfam.df.long,
            y = tpm,
            fill = subfam)) +
   geom_col(position = "fill") +
+  xlab('stages') +
   scale_fill_manual(values = bir_clade_col_num) +
   facet_wrap(~experiment, scales = "free_x")+
   theme_classic()+
@@ -358,11 +361,14 @@ ggplot(filter(berg_tpm_subfam_norm.df.long,
                                         order_vector = c('Ring','Troph','Schiz','Mixed'))),
            y = norm_tpm,
            fill = subfam)) +
-  geom_col(position = "stack") +
+  geom_col(position = "fill") +
+  xlab('stages') +
+  ylab('TPM per gene') +
   facet_wrap(~experiment, scales = "free_x") +
   scale_fill_manual(values = bir_clade_col_num[!names(bir_clade_col_num) %in% c('ancestral (n = 1)',
                                                                                 'S6 (n = 1)')]) +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 90))
 ```
+
 
