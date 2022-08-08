@@ -371,4 +371,58 @@ ggplot(filter(berg_tpm_subfam_norm.df.long,
   theme(axis.text.x = element_text(angle = 90))
 ```
 
+Hypothesis: There is a difference in the transcription level of L-form pirs as a proportion of all S/L-form pirs between Asexual Schizont samples and non-schizont samples
+
+```{r}
+chab_tpm_subfam.L.df.long <- chab_tpm_subfam.df.long %>% 
+  filter(!subfam == 'ancestral (n = 1)') %>% 
+  mutate(subfam_L = grepl(subfam, pattern = '^L')) %>% 
+  group_by(transmission, time, name, sample, subfam_L) %>% 
+  summarise(sum_tpm = sum(tpm)) %>% 
+  group_by(sample) %>% 
+  mutate(sum_tpm_all = sum(sum_tpm)) %>% 
+  filter(subfam_L)
+
+chab_tpm_subfam.L.df.long %>% 
+  group_by(sample) %>% 
+  mutate(prop_L = sum_tpm/sum_tpm_all) %>% 
+  arrange(desc(prop_L))
+
+bind_rows(
+  lapply(str_subset(unique(chab_tpm_subfam.L.df.long$sample), 
+                    pattern = 'rMT(?!_sch.culture)'),
+         function(sample.name){
+           bind_rows(
+             lapply(c('rMT_sch.culture_1', 
+                      'rMT_sch.culture_2', 
+                      'rMT_sch.culture_3'), 
+                    function(sch.cult){
+                      L_forms <- c(chab_tpm_subfam.L.df.long$sum_tpm[
+                        chab_tpm_subfam.L.df.long$sample == sample.name
+                      ],
+                      chab_tpm_subfam.L.df.long$sum_tpm[
+                        chab_tpm_subfam.L.df.long$sample == sch.cult
+                      ])
+                      SorL_forms <- c(chab_tpm_subfam.L.df.long$sum_tpm_all[
+                        chab_tpm_subfam.L.df.long$sample == sample.name
+                      ],
+                      chab_tpm_subfam.L.df.long$sum_tpm_all[
+                        chab_tpm_subfam.L.df.long$sample == sch.cult
+                      ])
+                      test.stat <- prop.test(L_forms, SorL_forms,
+                                             alternative = 'less')
+                      data.frame(comp = paste0(sample.name, '-', sch.cult),
+                                 pval = test.stat$p.value)
+                    })
+           )
+         })
+)%>% 
+  mutate(padj = round(p.adjust(pval), digits = 5),
+         pval = round(pval, digits = 5)) %>% 
+  arrange(desc(padj))
+```
+
+```{r berg_prop_test}
+
+```
 
