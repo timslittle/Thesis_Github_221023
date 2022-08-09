@@ -272,12 +272,13 @@ chab_tpm_subfam.df.long <- chab_tpm.df %>%
   filter(Geneid %in% cir_id) %>% 
   melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
   mutate(subfam = cir_info$subfam_num[match(Geneid, cir_info$Geneid)],
+         SorL = cir_info$SorL[match(Geneid, cir_info$Geneid)],
          transmission = str_extract(sample, pattern = 'rMT|SBP'),
          time = str_extract(sample, '[[:digit:]]{2}h|sch.culture'),
          name = paste0(time, str_extract(sample, 
                                 pattern = '(_[[:digit:]]$)')))
 
-ggplot(chab_tpm_subfam.df.long, 
+ggplot(filter(chab_tpm_subfam.df.long, SorL != 'ancestral'), 
        aes(x = factor(name,
                       levels = ordering(name, 
                                         order_vector = c(times_stages_table$time, 'sch.culture'))),
@@ -285,9 +286,10 @@ ggplot(chab_tpm_subfam.df.long,
            fill = subfam)) +
   geom_col(position = "fill") +
   scale_fill_manual(values = clade_col_num) +
-  facet_wrap(~transmission, scales = "free_x")+
+  facet_grid(~transmission, scales = "free_x") +
+  # facet_grid(transmission ~ SorL, scales = "free")+
   theme_classic()+
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90, size = 3))
 ```
 
 Dividing the TPM by the number of genes in each sub-family to see TPM/gene.
@@ -324,7 +326,7 @@ ggplot(filter(chab_tpm_subfam_norm.df.long,
 berg_tpm_subfam.df.long <- berghei_tpm[,
                                        c('Geneid',
                                          str_subset(colnames(berghei_tpm), 
-                                                    pattern = 'Asex'))] %>% 
+                                                    pattern = 'Asex\\.(?!Mixed)'))] %>% 
   filter(Geneid %in% bir_id) %>% 
   melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
   mutate(subfam = bir_clade$subfam_num[match(Geneid, bir_clade$Geneid)],
@@ -332,7 +334,7 @@ berg_tpm_subfam.df.long <- berghei_tpm[,
          stage = str_extract(sample, 'Asex.+(?=_[[:digit:]])'),
          name = str_extract(sample, '(?<=Asex\\.).+'))
 
-ggplot(berg_tpm_subfam.df.long, 
+ggplot(filter(berg_tpm_subfam.df.long, subfam != 'ancestral (n = 1)'), 
        aes(x = factor(name,
                       levels = ordering(name,
                                         order_vector = c('Ring','Troph','Schiz','Mixed'))),
@@ -373,7 +375,7 @@ ggplot(filter(berg_tpm_subfam_norm.df.long,
 
 Hypothesis: There is a difference in the transcription level of L-form pirs as a proportion of all S/L-form pirs between Asexual Schizont samples and non-schizont samples
 
-```{r}
+```{r chab_prop_test}
 chab_tpm_subfam.L.df.long <- chab_tpm_subfam.df.long %>% 
   filter(!subfam == 'ancestral (n = 1)') %>% 
   mutate(subfam_L = grepl(subfam, pattern = '^L')) %>% 
@@ -390,7 +392,8 @@ chab_tpm_subfam.L.df.long %>%
 
 bind_rows(
   lapply(str_subset(unique(chab_tpm_subfam.L.df.long$sample), 
-                    pattern = 'rMT(?!_sch.culture)'),
+                    pattern = 'sch.culture',
+                    negate = TRUE),
          function(sample.name){
            bind_rows(
              lapply(c('rMT_sch.culture_1', 
@@ -423,6 +426,51 @@ bind_rows(
 ```
 
 ```{r berg_prop_test}
+berg_tpm_subfam.L.df.long <- berg_tpm_subfam.df.long %>% 
+  filter(!subfam == 'ancestral (n = 1)') %>% 
+  mutate(subfam_L = grepl(subfam, pattern = '^L')) %>% 
+  group_by(experiment, name, sample, subfam_L) %>% 
+  summarise(sum_tpm = sum(tpm)) %>% 
+  group_by(sample) %>% 
+  mutate(sum_tpm_all = sum(sum_tpm)) %>% 
+  filter(subfam_L)
 
+berg_tpm_subfam.L.df.long %>% 
+  group_by(sample) %>% 
+  mutate(prop_L = sum_tpm/sum_tpm_all) %>% 
+  arrange(desc(prop_L))
+
+bind_rows(
+  lapply(str_subset(unique(berg_tpm_subfam.L.df.long$sample), 
+                    pattern = 'Schiz|Mixed',
+                    negate = TRUE),
+         function(sample.name){
+           bind_rows(
+             lapply(str_subset(unique(berg_tpm_subfam.L.df.long$sample), 
+                               pattern = 'Schiz'), 
+                    function(sch.cult){
+                      L_forms <- c(berg_tpm_subfam.L.df.long$sum_tpm[
+                        berg_tpm_subfam.L.df.long$sample == sample.name
+                      ],
+                      berg_tpm_subfam.L.df.long$sum_tpm[
+                        berg_tpm_subfam.L.df.long$sample == sch.cult
+                      ])
+                      SorL_forms <- c(berg_tpm_subfam.L.df.long$sum_tpm_all[
+                        berg_tpm_subfam.L.df.long$sample == sample.name
+                      ],
+                      berg_tpm_subfam.L.df.long$sum_tpm_all[
+                        berg_tpm_subfam.L.df.long$sample == sch.cult
+                      ])
+                      test.stat <- prop.test(L_forms, SorL_forms,
+                                             alternative = 'less')
+                      data.frame(comp = paste0(sample.name, '-', sch.cult),
+                                 pval = test.stat$p.value)
+                    })
+           )
+         })
+)%>% 
+  mutate(padj = round(p.adjust(pval), digits = 5),
+         pval = round(pval, digits = 5)) %>% 
+  arrange(desc(padj))
 ```
 
