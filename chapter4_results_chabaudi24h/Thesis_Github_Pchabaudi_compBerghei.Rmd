@@ -268,7 +268,7 @@ berghei_tpm <- read.csv('../chapter3_results_bergheiPir/berghei_tpm.csv',
 
 ```{r chab_subfam_normByGeneNum}
 chab_tpm_subfam.df.long <- chab_tpm.df %>% 
-  rownames_to_column('Geneid') %>% 
+  # rownames_to_column('Geneid') %>% 
   filter(Geneid %in% cir_id) %>% 
   melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
   mutate(subfam = cir_info$subfam_num[match(Geneid, cir_info$Geneid)],
@@ -276,7 +276,8 @@ chab_tpm_subfam.df.long <- chab_tpm.df %>%
          transmission = str_extract(sample, pattern = 'rMT|SBP'),
          time = str_extract(sample, '[[:digit:]]{2}h|sch.culture'),
          name = paste0(time, str_extract(sample, 
-                                         pattern = '(_[[:digit:]]$)')))
+                                         pattern = '(_[[:digit:]]$)'))) %>% 
+  group_by(subfam, SorL, transmission, time, name) %>% summarise(tpm = sum(tpm))
 
 ( plot <- ggplot(filter(chab_tpm_subfam.df.long, 
                         SorL != 'ancestral'), 
@@ -347,7 +348,8 @@ berg_tpm_subfam.df.long <- berghei_tpm[,
   mutate(subfam = bir_clade$subfam_num[match(Geneid, bir_clade$Geneid)],
          experiment = str_extract(sample, pattern = '^E[[:digit:]]{2}'),
          stage = str_extract(sample, 'Asex.+(?=_[[:digit:]])'),
-         name = str_extract(sample, '(?<=Asex\\.).+'))
+         name = str_extract(sample, '(?<=Asex\\.).+')) %>% 
+  group_by(subfam, experiment, stage, name) %>% summarise(tpm = sum(tpm))
 
 ( plot <- ggplot(filter(berg_tpm_subfam.df.long, subfam != 'ancestral (n = 1)'), 
                  aes(x = factor(name,
@@ -357,18 +359,23 @@ berg_tpm_subfam.df.long <- berghei_tpm[,
                      fill = subfam)) +
     geom_col(position = "fill") +
     ylab("TPM") +
-    xlab('stages') +
+    xlab('Stages') +
     scale_fill_manual(values = bir_clade_col_num[!grepl(names(bir_clade_col_num), 
                                                         pattern =  'ancestral')]) +
     facet_wrap(~experiment, scales = "free_x")+
     theme_classic()+
-    theme(axis.text.x = element_text(angle = 90)) )
+    theme(axis.text.x = element_text(angle = 90,
+                                     hjust = 1),
+          strip.text = element_text(size = 12),
+          axis.text.y = element_text(size = 10),
+          axis.title = element_text(size = 12))
+)
 
 if(global_save_var){
   ggsave(plot,
          file = 'plots/berghei_subfamProp_AsexExact.png',
          width = 7,
-         height = 9,
+         height = 8,
          units = "in")
 }
 ```
