@@ -703,8 +703,10 @@ if(global_save_var){
 ```
 
 ```{r all_pir_barchart}
+#Filter for pirs above 1 TPM in at least one sample
 cir_plot <- chab_tpm.df %>% 
-  filter(Geneid %in% cir_id) %>% 
+  filter(Geneid %in% cir_id,
+         if_any(!matches('Geneid'), ~ . > 1)) %>% 
   melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
   mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
          transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1],
