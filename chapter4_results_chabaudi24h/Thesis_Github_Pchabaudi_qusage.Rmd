@@ -93,7 +93,7 @@ chabaudi_gene_info <- dplyr::rename(chabaudi_gene_info,
 
 ```{r cir_info}
 
-cir_info <- read_delim('../standard_files/Pchabaudi_cir_info.txt',
+cir_info <- read_delim('../standard_files/Pchabaudi_pir_info.txt',
            delim = '\t')
 cir_id <- cir_info$Geneid
 
@@ -294,7 +294,6 @@ all_comparisons <- lapply(comparisons_stagesTrans,
                                    subfam_list,
                                    locus_list), 
                               function(gene_list){
-                                print(deparse(substitute(gene_list)))
                                 qs.results.subfam <- qusage(comp_stagesTrans.mat,
                                                             lifeCycle_labels,
                                                             comparison,
@@ -310,7 +309,7 @@ all_comparisons <- lapply(comparisons_stagesTrans,
                                                                    'qstable'))
                             return(list_comp)
                           })
-names(all_comparisons) <- comparisons
+names(all_comparisons) <- comparisons_stagesTrans
 
 all_comparisons.df <- bind_rows(lapply(all_comparisons, 
                                        function(x) bind_rows(lapply(x, 
