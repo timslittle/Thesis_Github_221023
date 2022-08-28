@@ -246,6 +246,17 @@ names(subfam_list) <- unique(cir_info$subfam)
 subfam_list <- subfam_list[unlist(lapply(subfam_list, 
                                          function(x) length(x) > 3))]
 
+cir_info <- mutate(cir_info, 
+                   subfam_loci = paste(subfam,
+                                       chapl_aapl, 
+                                       sep = '_'))
+L4_loci_list <- lapply(c('L4_ChAPL', 'L4_AAPL'), 
+                  function(clade_nam) filter(cir_info, 
+                                             subfam_loci == clade_nam)$Geneid)
+names(L4_loci_list) <- c('L4_ChAPL', 'L4_AAPL')
+L4_loci_list <- L4_loci_list[unlist(lapply(L4_loci_list, 
+                                         function(x) length(x) > 3))]
+
 ShortLong_list <- 
   lapply(unique(cir_info$SorL), 
          function(SorL_nam) filter(cir_info, 
@@ -292,6 +303,7 @@ all_comparisons <- lapply(comparisons_stagesTrans,
                               list(pir_geneset,
                                    ShortLong_list,
                                    subfam_list,
+                                   L4_loci_list,
                                    locus_list), 
                               function(gene_list){
                                 qs.results.subfam <- qusage(comp_stagesTrans.mat,
@@ -422,9 +434,9 @@ all_comparisons_transStage <-
                       list(pir_geneset,
                            ShortLong_list,
                            subfam_list,
+                           L4_loci_list,
                            locus_list), 
                       function(gene_list){
-                        print(deparse(substitute(gene_list)))
                         qs.results.subfam <- qusage(comp_transStage.mat,
                                                     lifeCycle_labels,
                                                     comparison,
