@@ -418,10 +418,14 @@ chab_tpm.df_pca_coords <- data.frame(sample = rownames(chab_tpm.df_pca_var$coord
                                         PC3 = chab_tpm.df_pca_coords$Dim.3,
                                         PC2 = chab_tpm.df_pca_coords$Dim.2) %>% 
   dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
-  mutate( transmission = str_split_fixed(stage, pattern = '_', n = 2)[,1],
+  mutate( transmission = toupper(str_split_fixed(stage, pattern = '_', n = 2)[,1]),
           time = str_extract(stage,pattern = '[[:digit:]]{1,2}h|sch.culture')) 
 
-colornames <- viridis(length(unique(chab_tpm.df_pca_coords$time)))
+# colornames <- viridis(length(unique(chab_tpm.df_pca_coords$time)))
+colornames <- c(cbPalette, 'black')
+# colornames <- c('#FEFE62', '#D35FB7','#FFC20A', '#0C7BDC',
+#                 '#1AFF1A', '#4B0092', '#E66100', '#5D3A9B',
+#                 '#D41159')
 colornames <- setNames(colornames, 
                        sort(unique(chab_tpm.df_pca_coords$time)))
 
@@ -452,26 +456,6 @@ pc3_importance <- round(pca_importance$PC3[2]*100, digits = 1)
     ggtitle('PCA without RMT-high pseudogene')
 )
 
-# (
-#   plot <- ggplot(chab_tpm.df_pca_coords,
-#                  aes(
-#                    x = PC3,
-#                    y = PC1,
-#                    col = time,
-#                    shape = transmission
-#                  )) +
-#     geom_point(size = 3,
-#                alpha = 0.8) +
-#     scale_color_manual(values = colornames) +
-#     xlab(paste0('PC3 ', round(pca_importance$PC3[2]*100, digits = 1),'%')) +
-#     ylab(paste0('PC1 ', round(pca_importance$PC1[2]*100, digits = 1),'%')) +
-#     guides(shape=guide_legend(ncol=2),
-#            col = guide_legend(ncol=2)) +
-#     theme_classic() +
-#     theme(legend.key.size = unit(4, 'mm'),
-#           legend.text = element_text(size = 7))
-# )
-
 if(global_save_var){
   ggsave(filename = 'plots/pca_nopseudo.png',
           plot = plot,
@@ -501,12 +485,12 @@ chab_tpm_wPseudo.df_pca_coords <- data.frame(sample = rownames(chab_tpm_wPseudo.
                                         PC3 = chab_tpm_wPseudo.df_pca_coords$Dim.3,
                                         PC2 = chab_tpm_wPseudo.df_pca_coords$Dim.2) %>% 
   dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
-  mutate( transmission = str_split_fixed(stage, pattern = '_', n = 2)[,1],
+  mutate( transmission = toupper(str_split_fixed(stage, pattern = '_', n = 2)[,1]),
           time = str_extract(stage,pattern = '[[:digit:]]{1,2}h|sch.culture')) 
 
-colornames <- viridis(length(unique(chab_tpm_wPseudo.df_pca_coords$time)))
-colornames <- setNames(colornames, 
-                       sort(unique(chab_tpm_wPseudo.df_pca_coords$time)))
+# colornames <- viridis(length(unique(chab_tpm_wPseudo.df_pca_coords$time)))
+# colornames <- setNames(colornames, 
+#                        sort(unique(chab_tpm_wPseudo.df_pca_coords$time)))
 
 
 pca_importance <- as.data.frame(summary(chab_tpm_wPseudo.df_pca)$importance)
