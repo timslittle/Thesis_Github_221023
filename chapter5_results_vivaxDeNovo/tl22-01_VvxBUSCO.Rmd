@@ -1,0 +1,264 @@
+---
+title: "tl22-01_VvxBUSCO"
+output: 
+  html_document:
+    theme: cosmo
+    code_download: true
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+options(scipen = 999) 
+# Means that numbers are displayed normally not as 1e6 (1000000)
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+library('readr')
+library('dplyr', 
+        lib.loc = "/camp/home/littlet/R/x86_64-pc-linux-gnu-library/4.0")
+library('stringr')
+library('purrr')
+library('kableExtra')
+library('plotly')
+library('rmarkdown')
+library('seqinr')
+library(plotly)
+```
+
+```{r analyse_busco}
+samplesheet <- read.delim("/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samplesheet.txt")
+
+samplesheet_busco.df <- lapply(unique(samplesheet$assembly), 
+                               function(assembly.file){
+                                 # The tenth element in the file path string corresponds to the assembly names that I used.
+                                 assembly <- strsplit(assembly.file, split = '/')[[1]][10]
+                                 if(!is.na(assembly)){
+                                   busco.file <- paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/busco/',
+                                                        assembly)
+                                   #Skip 2 in the read_tsv function as the first two lines are not part of the data frame.
+                                   busco_api.df <- read_tsv(paste0(busco.file, 
+                                                                   '_apicomplex/run_apicomplexa_odb10/full_table.tsv'),
+                                                            skip = 2,
+                                                            show_col_types = FALSE)
+                                   busco_api.complete <- sum(busco_api.df$Status == "Complete")
+                                   busco_api.fragment <- sum(busco_api.df$Status == "Fragmented")
+                                   busco_api.duplicate <- sum(n_distinct(
+                                     busco_api.df$`# Busco id`[busco_api.df$Status == "Duplicated"]
+                                   ))
+                                   
+                                   busco_plasmo.df <- read_tsv(paste0(busco.file, 
+                                                                      '_plasmodium/run_plasmodium_odb10/full_table.tsv'),
+                                                               skip = 2,
+                                                               show_col_types = FALSE)
+                                   busco_plasmo.complete <- sum(busco_plasmo.df$Status == "Complete")
+                                   busco_plasmo.fragment <- sum(busco_plasmo.df$Status == "Fragmented")
+                                   busco_plasmo.duplicate <- sum(n_distinct(
+                                     busco_plasmo.df$`# Busco id`[busco_plasmo.df$Status == "Duplicated"]
+                                   ))
+                                   
+                                   data.frame(
+                                     assembly = assembly.file,
+                                     assembly_name = assembly,
+                                     Experiment = samplesheet$Experiment[match(assembly.file, samplesheet$assembly)],
+                                     num_busco_api_complete = busco_api.complete,
+                                     perc_busco_api_complete = round(100*busco_api.complete/446,
+                                                                     digits = 3),
+                                     num_busco_api_fragment = busco_api.fragment,
+                                     perc_busco_api_fragment = round(100*busco_api.fragment/446,
+                                                                     digits = 3),
+                                     num_busco_api_duplicate = busco_api.duplicate,
+                                     perc_busco_api_duplicate = round(100*busco_api.duplicate/446,
+                                                                      digits = 3),
+                                     perc_busco_api_nonMissing = round(100*(
+                                       busco_api.fragment+busco_api.complete+busco_api.duplicate)/446,
+                                       digits = 3
+                                     ),
+                                     
+                                     num_busco_plasmo_complete = busco_plasmo.complete,
+                                     perc_busco_plasmo_complete = round(100*busco_plasmo.complete/3642,
+                                                                        digits = 3),
+                                     num_busco_plasmo_fragment = busco_plasmo.fragment,
+                                     perc_busco_plasmo_fragment = round(100*busco_plasmo.fragment/3642,
+                                                                        digits = 3),
+                                     num_busco_plasmo_duplicate = busco_plasmo.duplicate,
+                                     perc_busco_plasmo_duplicate = round(100*busco_plasmo.duplicate/3642,
+                                                                         digits = 3),
+                                     perc_busco_plasmo_nonMissing = round(100*(
+                                       busco_plasmo.fragment+busco_plasmo.complete+busco_plasmo.duplicate)/3642,
+                                       digits = 3
+                                     )
+                                   )
+                                 } else { return(NULL) }
+                               }) %>% bind_rows
+```
+
+```{r plotly}
+
+#Get the number of pirs stats
+assembly_stats.df <- read.table('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info_extra.txt')
+
+colours_val <- unique(assembly_stats.df$expt_colour)
+names(colours_val) <- unique(assembly_stats.df$experiment_num)
+colours_val <- colours_val[match(sort(unique(assembly_stats.df$experiment_num)),
+                                 names(colours_val))]
+
+assembly_stats_busco <- inner_join(assembly_stats.df, 
+                                   mutate(samplesheet_busco.df, 
+                                          assembly_file = assembly), 
+                                   by = 'assembly_file')
+# write.table(assembly_stats_busco,
+#             '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info_extra_busco.txt')
+
+
+#Include '.+(?=0.95)' pattern for searching as Gunalan has multiple cdhitest threshold assemblies.
+samplesheet_busco.df <- mutate(rowwise(samplesheet_busco.df), 
+                               num_pir_predict = assembly_stats.df$num_uniq_mRNA_ORFs_over200aaLength[
+                                 str_detect(assembly_stats.df$assembly, pattern = paste0(assembly_name, 
+                                                                                         '.+(?=0.95)'))
+                               ],
+                               expt_num = unique(
+                                 assembly_stats.df$experiment_num[
+                                   str_detect(assembly_stats.df$assembly, pattern = paste0(assembly_name, 
+                                                                                           '.+(?=0.95)'))
+                                 ]),
+                               num_transcripts = unique(
+                                 assembly_stats.df$num_transcripts[
+                                   str_detect(assembly_stats.df$assembly, pattern = paste0(assembly_name, 
+                                                                                           '.+(?=0.95)'))
+                                 ]),
+                               num_mRNA_pir_over200aa_over1TPM = unique(
+                                 assembly_stats.df$num_mRNA_pir_over200aa_over1TPM[
+                                   str_detect(assembly_stats.df$assembly, pattern = paste0(assembly_name, 
+                                                                                           '.+(?=0.95)'))
+                                 ])
+)
+
+hline <- function(y = 0, color = "blue") {
+  list(
+    type = "line", 
+    x0 = 0, 
+    x1 = 1, 
+    xref = "paper",
+    y0 = y, 
+    y1 = y, 
+    line = list(color = 'black')
+  )
+}
+vline <- function(x = 0, color = "red") {
+  list(
+    type = "line", 
+    y0 = 0, 
+    y1 = 1, 
+    yref = "paper",
+    x0 = x, 
+    x1 = x, 
+    line = list(color = color)
+  )
+}
+
+plot_ly(samplesheet_busco.df,
+        x = ~perc_busco_api_complete,
+        y = ~perc_busco_api_nonMissing,
+        text = ~assembly_name,
+        color = ~Experiment,
+        colors = rainbow(10),
+        mode = 'markers') %>% 
+  layout(shapes = list(hline(50)))
+
+plot_ly(samplesheet_busco.df,
+        x = ~perc_busco_plasmo_complete,
+        y = ~perc_busco_plasmo_nonMissing,
+        text = ~assembly_name,
+        color = ~Experiment,
+        colors = rainbow(10),
+        mode = 'markers') %>% 
+  layout(shapes = list(hline(50)))
+
+plot_ly(samplesheet_busco.df,
+        y = ~perc_busco_api_nonMissing,
+        x = ~perc_busco_plasmo_nonMissing,
+        text = ~assembly_name,
+        color = ~expt_num,
+        colors = colours_val,
+        size = ~num_transcripts,
+        # sizes = c(10,100),
+        mode = 'markers') %>% 
+  layout(shapes = list(hline(25), vline(25)))
+
+plot_ly(samplesheet_busco.df,
+        y = ~num_pir_predict,
+        x = ~perc_busco_plasmo_nonMissing,
+        text = ~assembly_name,
+        color = ~expt_num,
+        colors = colours_val,
+        mode = 'markers')
+
+```
+
+```{r ggplot_busco_graph}
+
+( plot_buscos <- ggplot(samplesheet_busco.df,
+                      aes(x = perc_busco_plasmo_nonMissing,
+                          y = perc_busco_api_nonMissing,
+                          col = factor(expt_num, unique(sort(expt_num))),
+                          size = num_pir_predict)) +
+  geom_point(alpha = 0.75) +
+  theme_classic() +
+    theme(axis.text.x = element_text(size = 10),
+          axis.text.y = element_text(size = 10),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_text(size = 12)) +
+  ylim(0,100) +
+  scale_color_manual(values = colours_val,
+                     name = 'Experiment') +
+    guides(color = guide_legend(override.aes = list(size=5),
+                             ncol = 2)) +
+  scale_size_continuous(name = expression(paste('Num predicted ',italic(pir),'s'))) +
+  xlab('Percentage of Plasmodium BUSCOs') +
+  ylab('Percentage of Apicomplexan BUSCOs') )
+
+ggsave(plot = plot_buscos,
+       '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_buscoPlasmo-buscoApi-pirNum.pdf',
+       device = 'pdf',
+       width = 7,
+       height = 7,
+       units = "in")
+
+ggplot(samplesheet_busco.df,
+       aes(x = perc_busco_plasmo_nonMissing,
+           y = num_mRNA_pir_over200aa_over1TPM,
+           col = factor(expt_num, unique(sort(expt_num))),
+           size = num_pir_predict)) +
+  geom_point(alpha = 0.75) +
+  theme_classic() +
+  scale_color_manual(values = colours_val,
+                     name = 'Experiment') +
+  scale_size_continuous(name = 'Number of predicted pirs') +
+  xlab('Percentage of Plasmodium BUSCOs') +
+  ylab('Number of pir transcripts')
+
+ggplot(samplesheet_busco.df,
+       aes(x = perc_busco_plasmo_nonMissing,
+           y = num_transcripts,
+           col = factor(expt_num, unique(sort(expt_num))),
+           size = num_pir_predict)) +
+  geom_point(alpha = 0.75) +
+  theme_classic() +
+  scale_color_manual(values = colours_val,
+                     name = 'Experiment') +
+  scale_size_continuous(name = 'Number of predicted pirs') +
+  xlab('Percentage of Plasmodium BUSCOs') +
+  ylab('Number of transcripts')
+
+
+```
+

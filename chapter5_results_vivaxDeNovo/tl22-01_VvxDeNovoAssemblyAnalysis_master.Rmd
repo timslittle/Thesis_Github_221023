@@ -1,0 +1,569 @@
+---
+title: "tl22-01_VivaxPirsInTheDeNovoAssemblies Master"
+output: 
+  html_document:
+    theme: cosmo
+    code_download: true
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+params:
+  assembly_name: 'SRX2884276_SRR5646671_scspades_0.95cdhitest'
+  assembly_file: '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/cdhitest/Rangel20_PvTCF/Rangel20_PvTCF_0.95_cdhitest.fasta'
+  orf_file: '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/Rangel20_PvTCF_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir.fasta'
+  blast_output_file: '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/blast/blast_to_Proteins/scspades/Rangel20_PvTCF/Rangel20_PvTCF_scspades_0.95cdhitest_hmmerPfam-Plasmodium_Vir_blast-VvxProt.outfmt6'
+  new_table: FALSE
+---
+
+# Intro
+
+This script analyses the results of a _de novo_ assembly of Plasmodium vivax RNAseq data.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+# getwd()
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+library('readr')
+library('dplyr', 
+        lib.loc = "/camp/home/littlet/R/x86_64-pc-linux-gnu-library/4.0")
+library('stringr')
+library('purrr')
+library('IRanges')
+library('kableExtra')
+library('plotly')
+library('seqinr')
+library('rmarkdown')
+```
+
+```{r function_ordering}
+ordering <- function(to_order, order_vector, fromLast = TRUE){
+  order = unlist(sapply(order_vector, 
+                        function(x){unique(str_subset(to_order, 
+                                                      pattern = paste(x)))}))
+  order_missing = unique(to_order[!to_order %in% order])
+  unique(c(order, order_missing), fromLast = fromLast)
+}
+```
+
+```{r load_data}
+pir.info <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/PlasmoDBv56_VvxPirs_P01_Sal1.csv', 
+                     header = TRUE)
+```
+
+```{r filter_nident}
+#Set a filter for bp length to assume is a valid match
+filter_nident <- 100
+```
+
+```{r assembly_name_expt}
+#Extract the first two numbers of the name e.g. ERX2560125_ERR2541707
+accession_name <- str_extract(params$assembly_name, 
+                              pattern = '(SR|ER).{8,9}_(SR|ER).{8,9}(?=_)')
+#If this works (not NA and only two elements) then find the expt name in the table
+if(!is.na(accession_name) & length(unlist(strsplit(accession_name, '_'))) == 2){
+  accession_table <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samples_to_cat.csv')
+  expt_name <- accession_table[grepl(accession_table$fastq_1, pattern = accession_name),][,1]
+} else {
+  #Otherwise assume that the expt name is in the assembly_name
+  expt_name <- str_extract(params$assembly_name, 
+                           pattern = '[:upper:][:lower:]+[:digit:]{2}')
+}
+if(rlang::is_empty(expt_name)){
+  stop(paste0('No experiment name for accession ', accession_name))
+}
+```
+
+Filtering matches by a minimum of `r filter_nident`bp to be a valid match.
+
+```{r read_blast_results}
+# list.files('../blast', pattern = 'outfmt')
+
+any_blast <- system(paste0('wc -l ', 
+              params$blast_output_file), 
+       intern = TRUE)
+any_blast <- !grepl(any_blast, pattern = '^0 ')
+if(any_blast){
+outfmt6_headers <- 
+  'qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs qcovhsp slen nident' %>% 
+  strsplit(split = ' ') %>% 
+  unlist
+
+blast <- read.table(params$blast_output_file,
+                    col.names = outfmt6_headers) %>% 
+  mutate(
+         scovhsp = round( (nident/slen * 100), digits = 2),
+         scovs = round(((abs(send - sstart) + 1)/slen *100), digits = 2),
+         evalue = format(evalue, scientific = TRUE)
+  ) %>% 
+  #Filter for the pir genes.
+  # The Sal1 and Zhu genes are already only the virs so I grep for them first in ifelse.
+  # Then, for the P01, I extract the gene name and search in the pir.info list.
+  filter(nident > filter_nident,
+         ifelse(grepl(sseqid, pattern = 'PVX|comp'),
+                TRUE,
+                str_extract_all(sseqid, 
+                                pattern = '.+(?=\\.1)') %in% pir.info$Gene.ID)) %>%
+  group_by(qseqid) %>% 
+  mutate(num_genes_match = n_distinct(sseqid))
+
+# Filter for the top hits for each de novo transcript by e-value.
+
+blast_top <- group_by(blast, qseqid) %>% 
+  slice_min(evalue, n = 1)
+
+#Filter for the de novo transcripts which only match a single known pir.
+# Also removing idents below 100 because these are probably poor matches.
+
+blast_uniq <- filter(blast, num_genes_match == 1)
+
+#sanity test
+# all(blast$scovs >= blast$scovhsp)
+} else {
+  blast <- 0
+  print('There are no BLAST hits to the P01, Sal1 or Zhu16 de novo pirs')
+}
+```
+
+# ORF analysis
+
+```{r orf_fasta}
+any_orfs <- system(paste0('wc -l ', params$orf_file), intern = TRUE)
+any_orfs <- !grepl(any_orfs, pattern = '^0 ')
+if(any_orfs){
+  orf_fasta <- read.fasta(params$orf_file,
+                          seqtype = c("AA"),
+                          seqonly = FALSE)
+} else {
+  orf_fasta <- 0
+  print("There are no pir gene ORFs detected by the criteria used.")
+}
+```
+
+```{r orf_lengths, eval = any_orfs}
+
+getLength(orf_fasta) %>% log %>% hist(breaks = 1000, 
+                                      main = 'log ORF lengths with 150aa line')
+abline(v = log(150), col = 'blue')
+
+```
+
+
+# Number of hits for each de novo transcript with a BLAST hit.
+
+Are there many de novo transcripts which match multiple different known transcripts? Are most of them unique?
+
+```{r number_of_hits_per_deNovoTranscript, eval = any_blast}
+blast %>% 
+  group_by(qseqid) %>% 
+  summarise(num = n_distinct(sseqid)) %>% 
+  .$num %>% 
+  hist(main = 'Histogram of BLAST hits per de novo transcript (50 max)',
+       breaks = 50)
+```
+
+#Genes with the most number of uniquely mapping de novo transcripts.
+
+```{r number_of_uniq_transcripts_per_gene, eval = any_blast}
+blast %>% 
+  filter(num_genes_match== 1) %>% 
+  group_by(sseqid) %>% 
+  summarise(num_of_uniq_deNovoTranscripts = n_distinct(qseqid),
+            max_id = max(pident),
+            min_id = min(pident),
+            max_nident = max(nident),
+            min_nident = min(nident),
+            max_gap = max(gapopen),
+            min_gap = min(gapopen),
+            max_qcovh = max(qcovhsp),
+            min_qcovh = min(qcovhsp),
+            max_scovh = max(scovhsp),
+            min_scovh = min(scovhsp)) %>% 
+  arrange(desc(num_of_uniq_deNovoTranscripts)) %>% 
+  kbl() %>% kable_styling() %>% scroll_box(width = "100%", height = "400px")
+```
+
+# Coverage of the subject (known transcripts) and query (assembled de novo transcripts) sequences. 
+
+Using only the de novo transcripts that uniquely match one known pir transcript.
+
+For our purposes the subject coverage is probably most important.
+
+```{r scov_v_qcov, eval = any_blast}
+fig <- plot_ly(
+  blast_uniq,
+  x = ~qcovhsp,
+  y = ~scovhsp,
+  text = ~paste(sseqid)
+) %>% 
+  layout(xaxis = list(title = "De novo transcript coverage"),
+         yaxis = list(title = "Known transcript coverage"))
+fig
+```
+
+Number of unique genes found by BLAST: `r ifelse(any_blast, unique(blast$sseqid) %>% length,0)`.
+
+# Known transcripts with >95% coverage from one de novo transcript.
+
+How many of the known transcripts are covered >=95% by de novo transcripts?
+
+num_match_all and num_match_95 show how many other known transcripts these de novo transcripts match in total or >=95% respectively.
+
+```{r transcripts_covering_most_of_known_transcripts, eval = any_blast}
+transcripts_covered_by_denovo <- blast %>% 
+  group_by(qseqid) %>%
+  mutate(num_match_all = n_distinct(sseqid)) %>%
+  group_by(sseqid) %>% 
+  filter(scovhsp >= 95) %>% 
+  group_by(qseqid) %>%
+  mutate(num_match_95 = n_distinct(sseqid)) %>% 
+  arrange(sseqid)
+transcripts_covered_by_denovo %>% 
+  select(-qstart,-qend,-sstart,-send,-evalue,-bitscore,-qcovs,-slen,-sseqid,-nident,-scovs) %>% 
+  kbl() %>% kable_styling() %>% scroll_box(width = "100%", height = "300px")
+```
+
+Showing the BLAST alignments of these >=95% coverage de novo transcripts in a graph, and all the matches they have. 
+The "n =" number after the transcript name shows how many other BLAST hits the de novo transcript had in total.
+Size of each point shows the length of the alignment.
+
+```{r transcripts_covering_most_of_known_transcripts_graph, eval = any_blast}
+blast %>% 
+  filter(qseqid %in% unique(transcripts_covered_by_denovo$qseqid)) %>%
+  group_by(qseqid) %>%
+  mutate(num_match_all = n_distinct(sseqid)) %>% 
+  mutate(qseqid = paste0(qseqid, '; n = ', num_match_all),
+         over95 = ifelse(scovhsp >= 95, 
+                         '>=95% coverage', 
+                         '<95% coverage')) %>% 
+  plot_ly(x = ~qcovhsp,
+          y = ~scovhsp,
+          text = ~paste(sseqid, '\n', 
+                        length, 'bp', '\n',
+                        scovhsp, '% coverage of known'),
+          color = ~qseqid,
+          size = ~length,
+          symbol = ~over95,
+          symbols = c('triangle-up', 'circle'),
+          sizes = c(2,100),
+          legendgroup = ~qseqid) %>% 
+  layout(xaxis = list(title = "De novo transcript coverage"),
+         yaxis = list(title = "Known transcript coverage"))
+```
+
+Alignments with >=95% known coverage but <50% de novo transcript coverage. 
+
+```{r low_qcovhsp, eval = any_blast}
+if(transcripts_covered_by_denovo %>% 
+   filter(qcovhsp < 50) %>% 
+   nrow() > 0){
+  transcripts_covered_by_denovo %>% 
+    filter(qcovhsp < 50) %>% 
+    kbl() %>% kable_styling() %>% scroll_box(width = "100%", height = "300px")
+}
+```
+
+# All the BLAST matches 
+
+Fix: Colours for low numbers of hits.
+
+```{r transcripts_coverage_allHits_transcripts_graph, eval = any_blast}
+blast %>% 
+  group_by(qseqid) %>%
+  mutate(num_match_all = n_distinct(sseqid)) %>% 
+  mutate(qseqid = paste0(qseqid, '; n = ', num_match_all),
+         over95 = ifelse(scovhsp >= 95, 
+                         '>=95% coverage', 
+                         '<95% coverage')) %>% 
+  plot_ly(x = ~qcovhsp,
+          y = ~scovhsp,
+          legendgroup = ~qseqid) %>% 
+  add_markers(text = ~paste(sseqid, '\n', 
+                            length, 'aa', '\n',
+                            scovhsp, '% coverage of known'),
+              color = ~qseqid,
+              size = ~length,
+              symbol = ~over95,
+              symbols = c('triangle-up', 'circle'),
+              colors = "Set1",
+              sizes = c(2,100)) %>% 
+  layout(xaxis = list(title = "De novo transcript coverage"),
+         yaxis = list(title = "Known transcript coverage"))
+```
+
+# BLAST hit coverages for the top alignments.
+
+```{r transcripts_coverage_topBLAST_transcripts_graph, eval = any_blast}
+blast %>% 
+  group_by(qseqid) %>%
+  mutate(num_match_all = n_distinct(sseqid)) %>% 
+  mutate(qseqid = paste0(qseqid, '; n = ', num_match_all),
+         over95 = ifelse(scovhsp >= 95, 
+                         '>=95% coverage', 
+                         '<95% coverage')) %>% 
+  group_by(sseqid) %>% 
+  slice_min(evalue, n = 1) %>% 
+  plot_ly(x = ~qcovhsp,
+          y = ~scovhsp,
+          legendgroup = ~qseqid) %>% 
+  add_markers(text = ~paste(sseqid, '\n', 
+                            length, 'aa', '\n',
+                            scovhsp, '% coverage of known'),
+              color = ~qseqid,
+              size = ~length,
+              symbol = ~over95,
+              symbols = c('triangle-up', 'circle'),
+              colors = "Set3",
+              sizes = c(2,100)) %>% 
+  layout(xaxis = list(title = "De novo transcript coverage"),
+         yaxis = list(title = "Known transcript coverage"))
+```
+
+# Novel ORFs for ORFs not matching known virs.
+
+Novel ORFs are described as those that don't match any known pir >=95% identity.
+
+```{r orf_novel, eval = any_blast}
+num_orf_novel_95 <- blast %>% 
+  filter(scovhsp < 95) %>% 
+  .$qseqid %>% 
+  unique %>% 
+  length
+
+mRNA_novel_95 <- blast %>% 
+  filter(scovhsp < 95) %>% 
+  .$qseqid %>% 
+  str_extract('(?<=NODE_)[[:digit:]]+(?=_)') %>% 
+  unique
+
+num_mRNA_novel_95 <-  length(mRNA_novel_95)
+
+blast %>% 
+  filter(scovhsp < 95) %>% 
+  .$qseqid %>% 
+  unique %>% 
+  str_extract(pattern = '(?<=length_)[:digit:]+(?=_)') %>% 
+  as.numeric %>% 
+  hist(breaks = 50, main = "Novel ORF lengths (<95% id match known pirs)")
+```
+
+## Novel ORFs matched by percentage coverage threshold.
+
+```{r orf_coverage_by_percentage, eval = any_blast}
+
+orfs_covered_by_denovo_diffcov <- lapply(seq(0,100,by = 5),
+                                                function(covrg) {
+                                                  blast %>% 
+                                                    group_by(sseqid) %>% 
+                                                    filter(scovhsp < covrg) %>%
+                                                    .$qseqid %>% unique %>% length
+                                                })
+names(orfs_covered_by_denovo_diffcov) <- seq(0,100,by = 5)
+plot(y = unlist(orfs_covered_by_denovo_diffcov), 
+     x = seq(0,100,by = 5),
+     # ylim = c(0,max(unlist(orfs_covered_by_denovo_diffcov))),
+     # main = 'For all de novo transcripts',
+     ylab = 'Number of novel ORFs',
+     xlab = 'Percentage of coverage matching a known pir',
+     yaxt = 'none')
+axis(2, at = seq(0,nrow(pir.info),by = 100))
+# abline(a = 25, b = 0)
+                                                    
+```
+
+# BLAST hit coverages for the top alignments to the Zhu 2016 de novo virs.
+
+```{r transcripts_coverage_topBLAST_Zhu16transcripts_graph, eval = any_blast}
+blast %>% 
+  group_by(qseqid) %>%
+  mutate(num_match_all = n_distinct(sseqid)) %>% 
+  mutate(qseqid = paste0(qseqid, '; n = ', num_match_all),
+         over95 = ifelse(scovhsp >= 95, 
+                         '>=95% coverage', 
+                         '<95% coverage')) %>% 
+  filter(grepl(sseqid, 
+               pattern = 'comp')) %>% 
+  group_by(sseqid) %>% 
+  slice_min(evalue, n = 1) %>% 
+  plot_ly(x = ~qcovhsp,
+          y = ~scovhsp,
+          text = ~paste(sseqid, '\n', 
+                        length, 'aa', '\n',
+                        scovhsp, '% coverage of known'),
+          color = ~qseqid,
+          size = ~length,
+          symbol = ~over95,
+          symbols = c('triangle-up', 'circle'),
+          sizes = c(2,100),
+          legendgroup = ~qseqid) %>% 
+  layout(xaxis = list(title = "De novo transcript coverage"),
+         yaxis = list(title = "Known transcript coverage"))
+```
+
+# Transcripts matched by percentage coverage.
+
+```{r transcript_coverage_by_percentage, eval = any_blast}
+
+transcripts_covered_by_denovo_diffcov <- lapply(seq(0,100,by = 5),
+                                                function(covrg) {
+                                                  blast %>% 
+                                                    group_by(sseqid) %>% 
+                                                    filter(scovhsp >= covrg) %>%
+                                                    .$sseqid %>% unique %>% length
+                                                })
+names(transcripts_covered_by_denovo_diffcov) <- seq(0,100,by = 5)
+plot(y = unlist(transcripts_covered_by_denovo_diffcov), 
+     x = seq(0,100,by = 5),
+     ylim = c(0,nrow(pir.info)),
+     main = 'For all de novo transcripts',
+     ylab = 'Number of known transcripts covered',
+     xlab = 'Percentage of coverage by individual transcripts',
+     yaxt = 'none')
+axis(2, at = seq(0,nrow(pir.info),by = 100))
+# abline(a = 25, b = 0)
+                                                    
+```
+
+What data is worth saving? 
+* Number of ORFs found.
+* Number of ORFs over certain lengths.
+
+```{r orfs_to_save}
+number_transcripts <- system(paste0('cat ',
+                                    params$assembly_file, 
+                                    ' | grep ">" | wc -l'),
+                             intern = TRUE)
+if(any_orfs){
+  number_orfs_unique_mRNA <- str_extract(getName(orf_fasta),
+                                         pattern = '(?<=NODE_)[[:digit:]]+(?=_)') %>% 
+    unique() %>% 
+    length
+  
+  orf_lengths <- getLength(orf_fasta)
+  
+  orfs_unique_mRNA_Over200aaLength <- str_extract(getName(orf_fasta[orf_lengths >= 200]),
+                                                  pattern = '(?<=NODE_)[[:digit:]]+(?=_)') %>% 
+    unique()
+  
+  number_orfs_unique_mRNA_Over200aaLength <-  length(orfs_unique_mRNA_Over200aaLength)
+  
+  num_ORFs_over200aaLength = sum(orf_lengths>=200)
+  num_ORFs_novel_nomatch95known = num_orf_novel_95
+  num_uniq_mRNA_ORFs_predict = number_orfs_unique_mRNA
+  num_uniq_mRNA_ORFs_over200aaLength = number_orfs_unique_mRNA_Over200aaLength
+  
+} else {
+  number_orfs_unique_mRNA <- orf_lengths <- orfs_unique_mRNA_Over200aaLength <- number_orfs_unique_mRNA_Over200aaLength <- num_ORFs_over200aaLength <- num_ORFs_novel_nomatch95known <- num_uniq_mRNA_ORFs_predict <- num_uniq_mRNA_ORFs_over200aaLength <- 0
+}
+```
+
+```{r blast_to_save}
+if(any_blast){
+  mRNA_novel_95_over200aa <- mRNA_novel_95[mRNA_novel_95 %in% orfs_unique_mRNA_Over200aaLength]
+  
+  num_mRNA_novel_95_over200aa <- length(mRNA_novel_95_over200aa)
+  num_uniq_mRNA_ORF_novel_nomatch95known = num_mRNA_novel_95
+  knwn_trnscrpt_cvg_over75 = transcripts_covered_by_denovo_diffcov[['75']]
+  ancestral_over75 = blast %>% 
+    group_by(qseqid) %>%
+    mutate(num_match_all = n_distinct(sseqid)) %>%
+    group_by(sseqid) %>% 
+    filter(scovhsp >= 75, 
+           grepl(sseqid, 
+                 pattern = 'PVP01_1147700|PVX_113230')) %>% 
+    nrow
+  knwn_trnscrpt_cvg_over95 = length(unique(transcripts_covered_by_denovo$sseqid))
+  zhu16_trnscrpt_cvg_over95 = length(unique(str_subset(transcripts_covered_by_denovo$sseqid, 
+                                                       pattern = 'comp')))
+  Sal1_trnscrpt_cvg_over95 = length(unique(str_subset(transcripts_covered_by_denovo$sseqid, 
+                                                      pattern = 'PVX')))
+  P01_trnscrpt_cvg_over95 = length(unique(str_subset(transcripts_covered_by_denovo$sseqid, 
+                                                     pattern = 'PVP01')))
+  ancestral_over95 = ifelse(
+    any(grepl(transcripts_covered_by_denovo$sseqid,
+              pattern = 'PVP01_1147700|PVX_113230')),
+    paste(transcripts_covered_by_denovo$sseqid[
+      grepl(transcripts_covered_by_denovo$sseqid,
+            pattern = 'PVP01_1147700|PVX_113230')
+    ], sep = '; '),
+    0)
+  mean_mismatches = mean(transcripts_covered_by_denovo$mismatch)
+  mean_gaps = mean(transcripts_covered_by_denovo$gapopen)
+  med_mismatches = median(transcripts_covered_by_denovo$mismatch)
+  med_gaps = median(transcripts_covered_by_denovo$gapopen)
+}else{
+  mRNA_novel_95_over200aa <- num_mRNA_novel_95_over200aa <- num_uniq_mRNA_ORF_novel_nomatch95known <- knwn_trnscrpt_cvg_over75 <- ancestral_over75 <- knwn_trnscrpt_cvg_over95 <- zhu16_trnscrpt_cvg_over95 <- Sal1_trnscrpt_cvg_over95 <- P01_trnscrpt_cvg_over95 <- ancestral_over95 <- mean_mismatches <- mean_gaps <- med_mismatches <- med_gaps <- 0
+}
+
+number_orfs <- system(paste0('cat ',
+                             params$orf_file,
+                             ' | grep ">" | wc -l'), 
+                      intern = TRUE)
+```
+
+```{r data_save}
+
+df_save <- data.frame("experiment" = expt_name,
+                      "assembly" = params$assembly_name,
+                      "num_uniq_mRNA_pirHMMerORFs_nomatch95known_over200aa" = num_mRNA_novel_95_over200aa,
+                      "num_transcripts" = number_transcripts,
+                      "num_ORFs_predict" = number_orfs,
+                      "num_ORFs_over200aaLength" = num_ORFs_over200aaLength,
+                      "num_ORFs_novel_nomatch95known" = num_ORFs_novel_nomatch95known,
+                      "num_uniq_mRNA_ORFs_predict" = num_uniq_mRNA_ORFs_predict,
+                      "num_uniq_mRNA_ORFs_over200aaLength" = num_uniq_mRNA_ORFs_over200aaLength,
+                      "num_uniq_mRNA_ORF_novel_nomatch95known" = num_uniq_mRNA_ORF_novel_nomatch95known,
+                      "knwn_trnscrpt_cvg_over75" = knwn_trnscrpt_cvg_over75,
+                      "ancestral_over75" = ancestral_over75,
+                      "knwn_trnscrpt_cvg_over95" = knwn_trnscrpt_cvg_over95,
+                      "zhu16_trnscrpt_cvg_over95" = zhu16_trnscrpt_cvg_over95,
+                      "Sal1_trnscrpt_cvg_over95" = Sal1_trnscrpt_cvg_over95,
+                      "P01_trnscrpt_cvg_over95" = P01_trnscrpt_cvg_over95,
+                      "ancestral_over95" = ancestral_over95,
+                      "mean_mismatches" = mean_mismatches,
+                      "mean_gaps" = mean_gaps,
+                      "med_mismatches" = med_mismatches,
+                      "med_gaps" = med_gaps,
+                      "assembly_file" = params$assembly_file,
+                      "orf_file" = params$orf_file,
+                      "blast_file" = params$blast_output_file
+) 
+
+if(!file.exists('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt') | params$new_table){
+  #If table file doesn't exist then create it.
+  write.table(df_save,
+              file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt',
+              sep = '\t',
+              col.names = TRUE,
+              append = FALSE,
+              row.names = FALSE)
+} else if (params$assembly_name %in% read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt')$assembly){
+  #If assembly_name is already in table then overwrite it.
+  assembly_info <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt')
+  assembly_info[assembly_info$assembly %in% params$assembly_name,] <- df_save[1,]
+  write.table(assembly_info,
+              file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt',
+              sep = '\t',
+              row.names = FALSE)
+} else {
+  #Append to the existing table is both above are false
+  write.table(df_save,
+              file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt',
+              sep = '\t',
+              col.names = FALSE,
+              append = TRUE,
+              row.names = FALSE)
+}
+
+df_save %>% 
+  kbl() %>% kable_styling() %>% scroll_box(width = "100%", height = "400px")
+
+```

@@ -1,0 +1,126 @@
+---
+title: "tl22-01_analysingAssemblyStats"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+# getwd()
+```
+
+```{r load_packages}
+library(ggplot2)
+library(stringr)
+safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#332288", "#AA4499", 
+                             "#44AA99", "#999933", "#882255", "#661100", "#6699CC", "#888888")
+```
+
+```{r read_data}
+df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt')
+```
+
+#Want to show the stages of development in this.
+
+```{r expt_name}
+ accession_table <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samples_to_cat.csv')
+
+#Extract the first two numbers of the name e.g. ERX2560125_ERR2541707
+df$Cat.Sample.stage.s. <- factor(
+  sapply(
+    df$assembly, 
+    function(assembly_name){
+      accession_name <- str_extract(assembly_name, 
+                                    pattern = '(SR|ER).{8,9}_(SR|ER).{8,9}(?=_)')
+      #If this works (not NA and only two elements) then find the expt name in the table
+      if(!is.na(accession_name) & length(unlist(strsplit(accession_name, '_'))) == 2){
+        cat_sample_stage <- accession_table$Cat.Sample.stage.s.[grepl(accession_table$fastq_1, pattern = accession_name)]
+      } else {
+        #Get the first two elements of the name (separated by '_') - split then paste back together.
+        expt_name <- paste(str_split_fixed(assembly_name, 
+                                      pattern = '_', n = 3)[c(1,2)], collapse = '_')
+        if(any(grepl(accession_table$Concatenated.file, 
+                     pattern = expt_name))){
+          #Otherwise this is probably a re-named concatenated file of samples, so
+          # we need the 'Concatenated file' column.
+          cat_sample_stage_all <- accession_table$Cat.Sample.stage.s.[grepl(accession_table$Concatenated.file, 
+                                                                            pattern = expt_name)]
+        } else {
+          #Instead of being sensible I had a different naming scheme for the un-concatenated Kim and Gunalan files.
+          cat_sample_stage_all <- accession_table$Cat.Sample.stage.s.[grepl(accession_table$file_prefix, 
+                                                                            pattern = expt_name)]
+        }
+        cat_sample_stage <- unique(cat_sample_stage_all)
+        if(rlang::is_empty(cat_sample_stage)){
+          stop(paste0('No life cycle stage name for assembly ', assembly_name))
+        } else if(!length(cat_sample_stage) == 1){
+          cat_sample_stage <- 'Mixed.stages'
+        }
+      }
+      return(cat_sample_stage)
+    })
+)
+```
+
+
+```{r numNovPir_v_totalTranscripts}
+(plot <- ggplot(data = df, aes(x = num_transcripts, 
+                               y = num_uniq_mRNA_pirHMMerORFs_nomatch95known_over200aa,
+                               col = experiment,
+                               shape = tolower(Cat.Sample.stage.s.))) +
+   geom_point() +
+   scale_color_manual(values = safe_colorblind_palette) +
+   scale_shape_manual(values=1:nlevels(df$Cat.Sample.stage.s.),
+                      name = 'Life cycle stage') +
+   xlab('Number of assembled transcripts') +
+   ylab('Number of novel pir ORFs') +
+   theme_classic() +
+   theme(legend.text = element_text(size = 7),
+         legend.title = element_text(size = 7),
+         legend.box = 'horizontal'))
+ggsave(plot = plot,
+       '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_numNovPir_v_totalTranscripts.pdf',
+       device = 'pdf',
+       width = 7,
+       height = 5,
+       units = "in")
+```
+
+```{r numPirORF_v_totalTranscripts}
+ggplot(data = df, aes(x = num_transcripts, 
+                      y = num_ORFs_predict,
+                      col = experiment,
+                      shape = tolower(Cat.Sample.stage.s.))) +
+  geom_point() +  
+  xlab('Number of assembled transcripts') +
+  ylab('Number of predicted pir ORFs') +
+  scale_color_manual(values = safe_colorblind_palette) +
+  scale_shape_manual(values=1:nlevels(df$Cat.Sample.stage.s.),
+                     name = 'Life cycle stage') +
+  theme_classic() +
+  theme(legend.text = element_text(size = 7),
+        legend.title = element_text(size = 7),
+        legend.box = 'horizontal')
+```
+
+
+```{r numNovel_v_numPirORF}
+ggplot(data = df, aes(x = num_ORFs_predict, 
+                      y = num_uniq_mRNA_pirHMMerORFs_nomatch95known_over200aa,
+                      col = experiment,
+                      shape = tolower(Cat.Sample.stage.s.))) +
+  geom_point() +
+  xlab('Number of predicted pir ORFs') +
+  ylab('Number of novel pir ORFs') +
+  scale_color_manual(values = safe_colorblind_palette) +
+  scale_shape_manual(values=1:nlevels(df$Cat.Sample.stage.s.),
+                     name = 'Life cycle stage') +
+  theme_classic() +
+  theme(legend.text = element_text(size = 7),
+        legend.title = element_text(size = 7),
+        legend.box = 'horizontal')
+```
+

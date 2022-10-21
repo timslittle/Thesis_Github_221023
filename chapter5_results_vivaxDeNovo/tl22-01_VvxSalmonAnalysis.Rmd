@@ -1,0 +1,832 @@
+---
+title: "tl22-01_VvxSalmonAnalysis"
+output: 
+  html_document:
+    theme: cosmo
+    code_download: true
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+# Intro
+
+This script analyses the results of a _de novo_ assembly of Plasmodium vivax RNAseq data.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE 
+                      # warning = FALSE
+                      )
+options(scipen = 999) 
+safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#332288", "#AA4499", 
+                             "#44AA99", "#999933", "#882255", "#661100", "#6699CC", "#888888")
+# Means that numbers are displayed normally not as 1e6 (1000000)
+global_save_var <- FALSE
+```
+
+```{r loading_packages, include = FALSE, message = FALSE}
+# Load the required packages
+library('dplyr', 
+        # lib.loc = "/camp/home/littlet/R/x86_64-pc-linux-gnu-library/4.0"
+        )
+library('readr')
+library('stringr')
+library('purrr')
+library('kableExtra')
+library('plotly')
+library('rmarkdown')
+library('data.table')
+library('ggpubr')
+library('seqinr')
+```
+
+```{r function_ordering}
+ordering <- function(to_order, order_vector, fromLast = TRUE){
+  order = unlist(sapply(order_vector, 
+                        function(x){unique(str_subset(to_order, 
+                                                      pattern = paste(x)))}))
+  order_missing = unique(to_order[!to_order %in% order])
+  unique(c(order, order_missing), fromLast = fromLast)
+}
+```
+
+```{r function_uniquify}
+#Make unique identifiers from a vector of names by appending '_X' where X is the number of the 'replicate'.
+uniquify <- function(vector_names, first_one = TRUE){
+  new_vector <- c()
+  df_num <- data.frame(names = unique(vector_names), rep = 1)
+  if(first_one){
+    duplicated_names <- unique(vector_names[duplicated(vector_names)])
+  }else{
+    duplicated_names <- c()
+  }
+  for(i in 1:length(vector_names)){
+    if(vector_names[i] %in% duplicated_names|!first_one){
+      name <- paste(vector_names[i],
+                    df_num$rep[match(vector_names[i], df_num$names)],
+                    sep = '_')
+      #Increase rep counter
+      df_num$rep[match(vector_names[i], df_num$names)] <- df_num$rep[match(vector_names[i], df_num$names)] + 1
+      new_vector[i] <- name
+    }else{
+      new_vector[i] <- vector_names[i]
+    }
+  }
+  new_vector
+}
+```
+
+```{r read_quantR}
+
+samplesheet <- read.delim("/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samplesheet.txt")
+
+#Fix the missing helpful_assembly_name for Kim_U samples
+samplesheet$helpful_assembly_name[grepl(samplesheet$library_name, pattern = 'U_{1,2}')] <- rep('Isolate_20', 2)
+
+expt_num.df <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/expt_codes.csv')
+
+expt_quant <- lapply(unique(samplesheet$Experiment),
+                     function(expt){
+                       #Get the experiment code.
+                       expt_code <- expt_num.df$expt_code[match(expt, 
+                                                                expt_num.df$expt)]
+                         assembly.list <- lapply(unique(samplesheet$assembly[samplesheet$Experiment == expt]),
+                                                 function(assembly_file){
+                                                   assembly <- str_extract(assembly_file,
+                                                                           pattern = '(?<=cdhitest\\/).+(?=\\/)')
+                                                   #Get the file name by pasting the words together
+                                                   quant_file <- paste(
+                                                     "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/quantFiles_R",
+                                                     expt, assembly, 
+                                                     paste0('quant_', 
+                                                            assembly,
+                                                            '_subfam30pid25lngthI14.csv'
+                                                     ),
+                                                     sep = '/')
+                                                   if(file_test("-f", quant_file)){
+                                                     #If the file exists then we can read it in
+                                                     quant_csv <- read.csv(quant_file, 
+                                                                           header = TRUE)
+                                                     return(quant_csv)
+                                                   }
+                                                 })
+                         #Get the names for the list of assemblies, extract the important bits and replace the expt with the expt_code.
+                         names(assembly.list) <- str_replace(
+                           str_extract(unique(samplesheet$assembly[samplesheet$Experiment == expt]),
+                                       pattern = '(?<=cdhitest\\/).+(?=\\/)'), 
+                           pattern = expt,
+                           replacement = expt_code)
+                         return(assembly.list)
+                     })
+
+#Change the names of the experiment list to the experiment code.
+names(expt_quant) <- expt_num.df$expt_code[match(unique(samplesheet$Experiment), 
+                                                 expt_num.df$expt)]
+
+#Remove null elements of list (no quant files)
+expt_quant <- expt_quant[!unlist(lapply(expt_quant, 
+                                        function(x) is.null(unlist(x))))]
+
+```
+
+# de novo transcript expression
+
+```{r top25}
+# Read in the top 25 clusters/sub-family designations
+cluster_subfam_25.df <- read.csv(file = 'cluster_subfam_25_df.csv')
+```
+
+```{r top_of_each_subfam}
+#Get consistent colour values so that each plot will use the same colour scheme.
+# Rep each subfamily letter twice and paste '_2' onto the end.
+select_subfam <- c('E', 'C_1', 'C_2', 'G', 'I', 'J', 'K_1', 'B_1',
+                   'unassigned_1', 'unassigned_2', 'unassigned_3',
+                   'other', 'noCluster') %>% ordering(c(.,'noCluster','other'))
+
+cluster_subfam_25.df$subfamSelect <- ifelse(cluster_subfam_25.df$subfam %in% select_subfam, 
+                                            cluster_subfam_25.df$subfam,
+                                            'other')
+cluster_subfam_select.df <- group_by(cluster_subfam_25.df, 
+                                     subfamSelect) %>% 
+  summarise(total_pirs = sum(total_pirs))
+
+#I want 'none' to be coloured white, and 'other' grey, so I get a palette two colour too short and add them on.
+top_subfam_col <- c(rep(safe_colorblind_palette, 
+                        length.out = length(select_subfam) - 2), 'white', 'grey')
+
+# top_subfam_col <- c('steelblue1',
+#                     'orange', 'firebrick2',
+#                     'yellow1',
+#                     'springgreen4',
+#                     'darkslateblue',
+#                     'tomato3',
+#                     'grey',
+#                     'violetred', 'hotpink1', 'lightsalmon',
+#                     'white','cyan3')
+
+top_subfam_col <- c("#006ddb",
+                    "#924900", "#db6d00",
+                    "#ffff6d",
+                    "seagreen3",
+                    "#490092",
+                    
+                    # "#920000",
+                    'tomato3',
+                    
+                    # "#004949",
+                    'grey',
+                    
+                    "#b66dff", "#ffb6db", "#ff6db6",
+                    "white", "#009292")
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+ "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+ "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+pie(rep(1,length(top_subfam_col)), col = top_subfam_col)
+pie(rep(1,length(pal)), col = pal)
+
+names(top_subfam_col) <- select_subfam
+
+# write.csv(data.frame(subfam_assignment = names(top_subfam_col),
+#                        colours = unname(top_subfam_col)),
+#             file = 'top_subfam_col.csv',
+#           row.names = FALSE)
+```
+
+How does the number of pir sub-families transcribed in each sample vary by BUSCO score?
+
+```{r pir_diversity_v_BUSCOs}
+buscos <- read.table('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info_extra_busco.txt')
+
+subfam_numbers <- lapply(names(expt_quant), 
+                         function(expt){
+                           #expt <- 'E06'
+                           #Doing two graphs, one for all pirs (above threshold) and one with the pir TPM normalised by the number in each sub-family/cluster.
+                           expt_subfamNum <- lapply(
+                             sort(names(expt_quant[[expt]])),
+                             function(assembly){
+                               #assembly <- 'E06_A'
+                               print(assembly)
+                               if(!is.null(expt_quant[[expt]][[assembly]])){
+                                 # For this experiment+assembly, melt the pir part of the data frame so that we can calculate per sample the number of sub-families transcribed above 1 TPM.
+                                 expt_quant[[expt]][[assembly]] %>% 
+                                   filter(pir) %>% 
+                                   reshape2::melt(.,
+                                                  id.vars = c('pir','Name', 'subfam'),
+                                                  measure.vars = str_subset(colnames(.), 
+                                                                            pattern = 'TPM'),
+                                                  value.name = 'tpm') %>% 
+                                   group_by(variable, 
+                                            subfam) %>% 
+                                   summarise(max_tpm = max(tpm)) %>% 
+                                   #Summarise should drop 'subfam' from grouping.
+                                   filter(max_tpm >= 1) %>% 
+                                   summarise(num_subfam = n_distinct(subfam)) %>% 
+                                   mutate(expt = expt,
+                                          assembly_name = assembly)
+                               }
+                             }) %>% 
+                             bind_rows
+                         }) %>% 
+  bind_rows
+#Warning "no non-missing arguments to max; returning -Inf" may indicate that there aren't any pirs present.
+buscos <- mutate(rowwise(buscos), assembly_name = str_replace(assembly_name, experiment, experiment_num))
+#Fix the messed up Gunalan names again
+subfam_numbers <- mutate(subfam_numbers, assembly_name = str_replace(assembly_name, 
+                                                                     'Guna19',
+                                                                     'E07'))
+busco_subfamNum.df <- inner_join(subfam_numbers, buscos, by = 'assembly_name')
+
+expt_colors <- unique(buscos$expt_colour)
+names(expt_colors) <- unique(buscos$experiment_num)
+expt_colors <- expt_colors[sort(names(expt_colors))]
+
+ggplot(busco_subfamNum.df,
+       aes(x = perc_busco_plasmo_nonMissing,
+           y = num_subfam,
+           col = expt)) +
+  geom_point(size = 5, alpha = .75) +
+  theme_classic() +
+  scale_color_manual(values = expt_colors[names(expt_colors) %in% busco_subfamNum.df$expt])
+
+```
+
+```{r barchart}
+
+#Make samplesheet column for nicer sample names using other information
+samplesheet_samplename <- 
+  mutate(samplesheet, 
+         Expt_code = expt_num.df$expt_code[match(Experiment, 
+                                                 expt_num.df$expt)]) %>% 
+  rowwise() %>% 
+  mutate(sample_name = paste(c(Expt_code, 
+                               Samples.combined, 
+                               Sample_stage),
+                             collapse = '_'),
+         assembly_exptCode = str_replace_all(assembly, 
+                                         pattern = Experiment, 
+                                         replacement = Expt_code))
+
+samplesheet_samplename$sample_name <- uniquify(samplesheet_samplename$sample_name, 
+                                               first_one = TRUE) 
+#Which type of bar chart am I making?
+geom_col_pos <- 'fill'
+# geom_col_pos <- 'stack'
+           
+# Make a stacked bar chart of the
+lapply(names(expt_quant),
+       function(expt){
+         #expt <- 'E06'
+         #Doing two graphs, one for all pirs (above threshold) and one with the pir TPM normalised by the number in each sub-family/cluster.
+         subfampir.list <- lapply(
+           c('totalTPM','absolute_subfam','normalised_subfam'),
+           function(absolute_or_norm){
+             #absolute_or_norm <- 'absolute_subfam'
+             experiment_plot <- lapply(
+               sort(names(expt_quant[[expt]])),
+               function(assembly){
+                 #assembly <- 'E06_A'
+                 if(!is.null(expt_quant[[expt]][[assembly]])){
+                   
+                   helpful_assembly_name <- unique(samplesheet_samplename$helpful_assembly_name[
+                     str_detect(samplesheet_samplename$assembly_exptCode ,
+                                assembly)
+                   ])
+                   
+                   #Set a size adjustment for when there are loads of graphs together and the axes need to be smaller
+                   size_adjust <- ifelse(length(names(expt_quant[[expt]])) > 6,
+                                         0.75,
+                                         1)
+                   
+                   subfam_top.df <- expt_quant[[expt]][[assembly]] %>%
+                     filter(pir) %>%
+                     #Include only the subfams in the top20
+                     mutate(subfam_top = ifelse(subfam %in% select_subfam,
+                                                subfam,
+                                                'other')) %>%
+                     reshape2::melt(.,
+                                    id.vars = c('subfam_top','pir','Name'),
+                                    measure.vars = str_subset(colnames(.),
+                                                              pattern = 'TPM'),
+                                    value.name = 'tpm') %>%
+                     #Filtering step for TPM
+                     filter(tpm >= 1) %>%
+                     rowwise() %>%
+                     mutate(sample_name = samplesheet_samplename$helpful_sample_name[
+                       str_detect(samplesheet_samplename$prefix,
+                                  str_remove(variable,
+                                             pattern = '_TPM'))
+                     ]) %>%
+                     #Arranging by TPM here means that when factorised the transcripts will be ordered by tpm value
+                     arrange(sample_name,subfam_top, tpm)
+                   
+                   if(absolute_or_norm == 'normalised_subfam'){
+                     #Normalise by the total number of pirs in each cluster
+                     subfam_top.df <- mutate(subfam_top.df,
+                                             number = cluster_subfam_select.df$total_pirs[
+                                               match(subfam_top,
+                                                     cluster_subfam_select.df$subfamSelect)
+                                             ],
+                                             tpm = tpm/cluster_subfam_select.df$total_pirs[
+                                               match(subfam_top,
+                                                     cluster_subfam_select.df$subfamSelect)
+                                             ])
+                   }
+                   
+                   #If there are more rows than zero (i.e. there are pirs)
+                   if(dim(subfam_top.df)[1] > 0){
+                     plot <- ggplot(data = subfam_top.df,
+                                    aes(x = factor(sample_name,
+                                                   levels = ordering(sample_name,
+                                                                     order_vector = c("^6hr", "before"))),
+                                        y = tpm))
+                     
+                     #For the 'totalTPM' graph I want the bar charts to be 'stacked' so the genes are added on top of each other and we can see the summed TPM values for each sample.
+                     if(absolute_or_norm == 'totalTPM'){
+                       geom_col_pos <- 'stack'
+                       plot <- plot + geom_col(
+                         position = geom_col_pos,
+                         show.legend = FALSE
+                       )
+                     }else{
+                       # For the graphs with the sub-families shown I want the bar charts to be 'fill' so that I'm visualising the ratios of the sub-family members.
+                       geom_col_pos <- 'fill'
+                       # colour and size so that each gene block has a small outline
+                       plot <- plot + geom_col(
+                         colour = 'black',
+                         size = 0.02,
+                         position = geom_col_pos,
+                         show.legend = FALSE,
+                         aes(fill = factor(subfam_top, 
+                                           levels = names(top_subfam_col)))
+                       )
+                     }
+                     
+                     plot <- plot + xlab('') + ylab('TPM') +
+                       
+                       # facet_wrap(~subfam_top, ncol = 2, scales = "free_y") +
+                       #Make scale_fill manual values depend on varying length of the palette so it can accomodate having more than 12 variables
+                       scale_fill_manual(values = top_subfam_col) +
+                       theme_classic() +
+                       #Going to keep the axis text only if it's of interest, or the first plot. Must be in if{}else{} because ifelse breaks it.
+                       theme(axis.text.x = element_text( size = 11*size_adjust),
+                             axis.title.y = element_blank(),
+                             axis.text.y = element_text(size = 15*size_adjust),
+                             plot.title = element_text(size = 7*size_adjust)) +
+                       ggtitle(paste0(expt,'_',assembly,'_',helpful_assembly_name))
+                     
+                     if(geom_col_pos != 'fill'){
+                       #If not using 'fill' then need a nicer y axis
+                       plot <- plot +
+                         scale_y_continuous(breaks = signif(
+                           seq(0,
+                               max(
+                                 group_by(subfam_top.df,
+                                          variable) %>%
+                                   summarise(total_tpm = sum(tpm)) %>%
+                                   .$total_tpm
+                               ),
+                               length.out = 5),
+                           digits = 2)
+                         )
+                     }
+                     
+                     return(plot)
+                   } else {
+                     return(NULL)
+                   }
+                   
+                 }
+               })
+           })
+         
+         names(subfampir.list) <- c('totalTPM','absolute_subfam','normalised_subfam')
+         
+         if(!is.null(unlist(subfampir.list))){
+           # If list returned isn't just NULL
+           
+           #Go into the 'all_pirs' data to get the indexes for splitting the graphs into two groups.
+           # This is to make the graphs look neater if there's more than ten datasets.
+           # Need to do this on the 'all_pirs' data so that the two sets of graphs will be directly comparable. Doing this for
+           #   each in turn may lead to different indexes due to different numbers of 'subfam_pirs'.
+           
+           #Get index of NULL values to remove. 
+           notNull.index <- !unlist(lapply(subfampir.list[[1]],
+                                           function(plot) is.null(plot)))
+           #Remove the NULL elements of lists
+           subfampir.list <- lapply(subfampir.list, function(x.list) x.list[notNull.index])
+           assembly_names.notNull <- sort(names(expt_quant[[expt]]))[notNull.index]
+           
+           plot.list <- lapply(
+             c("absolute_subfam",
+               "normalised_subfam"),
+             function(absolute_or_norm){
+               twoplot.list <- lapply(
+                 seq_along(subfampir.list[[1]]), 
+                 function(subfampir.index){ 
+                   apl <- subfampir.list[['totalTPM']][subfampir.index][[1]]
+                   bpl <- subfampir.list[[absolute_or_norm]][subfampir.index][[1]]
+                   assembly <- assembly_names.notNull[subfampir.index]
+                   helpful_name <- unique(samplesheet_samplename$helpful_assembly_name[
+                     str_detect(samplesheet_samplename$assembly_exptCode ,
+                                assembly)
+                   ])
+                   
+                   
+                   if(global_save_var){
+                     ggsave(
+                       plot = cowplot::plot_grid(apl, bpl, ncol = 2),
+                       filename = paste0(
+                         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/salmonQuant_plots/tl22-01_',
+                         expt, '_', absolute_or_norm, '_', assembly,
+                         '_quantSalmon_stacked_subfam30pid25lngthI14.pdf'
+                       ),
+                       width = 7,
+                       height = 5,
+                       units = "in",
+                       dpi = 330
+                     )
+                   }
+                   
+                   return(cowplot::plot_grid(apl, bpl, ncol = 2))
+                 }
+               )
+             }
+           )
+         }
+       })
+
+```
+
+Notes:
+* Cheng19 samples particularly divergent?
+* Some samples far more heterogeneous than others.
+* Strain specific differences show overwhelming inclusion of some families over others.
+** e.g. A few Kim19 show no other assembled sub-family beyond C_1.
+** Kim17 isolate 2
+* E_1s and C_1s tend to dominate expression (E_1 and C_1 are the largest groups).
+* Most pir expression comes from those which cannot be straightforwardly characterised by existing sub-families.
+
+* Kim samples mostly show major loss of pir transcription before and after chloroquine admin, although could this be explained by other factors? Also not seen for every sample.
+* Muller19 Thai shows that the two sporozoite pirs are expressed, albeit at low quantities, neither in a subfam.
+
+* Overall the proportions of sub-fams are very consistent! 
+** Could this be an artefact of clustering and choosing the largest clusters to plot?
+
+```{r legend}
+#Just showing the legend without a plot to accompany the above.
+legend.plot <- ggplot(data.frame(subfam = names(top_subfam_col), top_subfam_col), 
+       aes(subfam, fill = subfam)) + 
+  geom_bar() +
+  scale_fill_manual(values = top_subfam_col) +
+  guides(fill = guide_legend(title = 'Subfamily designation',
+                             ncol = 1)) +
+  guides(fill = guide_legend(override.aes = list(alpha=1)))+ # showing the point in the legend
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = c(0.5, 0.5), # move the legend to the center
+        legend.title = element_blank(),
+        legend.key = element_rect(fill='NA'),
+        panel.grid = element_blank(),
+        panel.border = element_rect(colour = "black", fill='white', size=1))
+
+if(global_save_var){
+  ggsave(
+    plot = legend.plot,
+    filename = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/salmonQuant_plots/tl22-01_legend_quantSalmon_stacked_subfam30pid25lngthI14.pdf',
+    width = 7,
+    height = 5,
+    units = "in",
+    dpi = 330
+  )
+}
+```
+
+
+```{r save_barchart_data}
+expt_barchart.list <- lapply(names(expt_quant),
+                           function(expt){
+                             #expt <- 'E01'
+                             #Doing two graphs, one for all pirs (above threshold) and one with the pir TPM normalised by the number in each sub-family/cluster.
+                             subfampir.list <- 
+                               lapply(sort(names(expt_quant[[expt]])),
+                                      function(assembly){
+                                        #assembly <- 'E01_SMRU1'
+                                        experiment_plot <- if(!is.null(expt_quant[[expt]][[assembly]])){
+                                          
+                                          helpful_assembly_name <- unique(samplesheet_samplename$helpful_assembly_name[
+                                            str_detect(samplesheet_samplename$assembly_exptCode ,
+                                                       assembly)
+                                          ])
+                                          
+                                          #Set a size adjustment for when there are loads of graphs together and the axes need to be smaller
+                                          size_adjust <- ifelse(length(names(expt_quant[[expt]])) > 6,
+                                                                0.75,
+                                                                1)
+                                          
+                                          subfam_top.df <- expt_quant[[expt]][[assembly]] %>%
+                                            filter(pir) %>%
+                                            #Include only the subfams in the top20
+                                            mutate(subfam_top = ifelse(subfam %in% select_subfam,
+                                                                       subfam,
+                                                                       'other')) %>%
+                                            reshape2::melt(.,
+                                                           id.vars = c('subfam_top','pir','Name'),
+                                                           measure.vars = str_subset(colnames(.),
+                                                                                     pattern = 'TPM'),
+                                                           value.name = 'tpm',
+                                                           variable.name = 'sample') %>%
+                                            #Filtering step for TPM
+                                            filter(tpm >= 1) %>%
+                                            rowwise() %>%
+                                            mutate(sample_name = samplesheet_samplename$helpful_sample_name[
+                                              str_detect(samplesheet_samplename$prefix,
+                                                         str_remove(sample,
+                                                                    pattern = '_TPM'))
+                                            ],
+                                            assembly = assembly,
+                                            expt = expt) %>%
+                                            #Arranging by TPM here means that when factorised the transcripts will be ordered by tpm value
+                                            arrange(sample_name,subfam_top, tpm)
+                                          
+                                          return(subfam_top.df)
+                                        } 
+                                      })
+                             names(subfampir.list) <- sort(names(expt_quant[[expt]]))
+                             
+                             subfampir.df <- bind_rows(subfampir.list[!unlist(lapply(subfampir.list, 
+                                                                                     plyr::empty))])
+                             return(subfampir.df)
+                           })
+
+names(expt_barchart.list) <- names(expt_quant)
+
+expt_barchart.list <- expt_barchart.list[!unlist(lapply(expt_barchart.list,
+                                                        plyr::empty))]
+
+expt_barchart.df <- bind_rows(expt_barchart.list)
+
+```
+
+```{r highest_prop_subfam}
+
+lapply(expt_barchart.list, 
+       function(expt.df){
+         expt.df %>% 
+           group_by(subfam_top, 
+                    assembly,
+                    sample,
+                    sample_name) %>%
+           summarise(tpm_sum = sum(tpm))          %>%
+           group_by(assembly, sample, sample_name) %>%
+           slice_max(order_by = tpm_sum, n = 10)
+       })
+
+```
+
+```{r normalised}
+lapply(expt_barchart.list, 
+       function(expt.df){
+         subfam_top.df <- mutate(expt.df,
+                                 number = cluster_subfam_25.df$total_pirs[
+                                   match(subfam_top,
+                                         cluster_subfam_25.df$subfam)
+                                 ],
+                                 tpm_norm = tpm/cluster_subfam_25.df$total_pirs[
+                                   match(subfam_top,
+                                         cluster_subfam_25.df$subfam)
+                                 ]) %>% 
+           group_by(subfam_top, 
+                    assembly,
+                    sample,
+                    sample_name) %>%
+           summarise(tpmNorm = sum(tpm_norm), 
+                     tpm = sum(tpm),
+                     num = n_distinct(Name))          %>%
+           group_by(assembly, sample, sample_name) %>%
+           slice_max(order_by = tpmNorm, n = 5)
+       })
+#other is NA right now - need to fix this.
+```
+
+Unassigned_3 seems to be enriched for transcription given its size. 
+
+Sub-families E and C_2 are large groups but still higher transcribers.
+
+```{r heatmap_clustering}
+heatmap.df <- lapply(names(expt_quant),
+       function(expt){
+         #expt <- 'E01'
+           lapply(sort(names(expt_quant[[expt]])),
+                  function(assembly){
+                    #assembly <- 'E01_SMRU1'
+                    
+                    #Filter for ext=pressed pirs
+                    pir_tpmover1.df <- expt_quant[[expt]][[assembly]] %>% 
+                      filter(pir) %>% rowwise %>% filter(
+                             across(matches('TPM'), ~ any(.x > 1))) 
+                    
+                    if(nrow(pir_tpmover1.df) == 0){
+                      # print('no pirs')
+                      return()
+                    }
+                    
+                    helpful_assembly_name <- unique(samplesheet_samplename$helpful_assembly_name[
+                      str_detect(samplesheet_samplename$assembly_exptCode ,
+                                 assembly)
+                    ])
+                    
+                      #Calculate the TPM of each sub-family as a proportion of pir transcription
+                      reshape2::melt(pir_tpmover1.df,
+                                     id.vars = c('pir','Name', 'subfam'),
+                                     measure.vars = str_subset(colnames(pir_tpmover1.df), 
+                                                               pattern = 'TPM'),
+                                     value.name = 'tpm',
+                                     variable.name = 'sample') %>% 
+                      group_by(sample, subfam) %>% 
+                      summarise(subfam_tot = sum(tpm)) %>% 
+                      mutate(subfam_prop = subfam_tot/sum(subfam_tot)*100) %>% 
+                      mutate(sum_prop = sum(subfam_prop),
+                             sample_name = paste0(expt, '_',
+                                                  helpful_assembly_name, 
+                                                  '_',
+                                                  samplesheet_samplename$helpful_sample_name[
+                                                    str_detect(samplesheet_samplename$prefix,
+                                                               str_remove(sample,
+                                                                          pattern = '_TPM'))
+                                                  ])) %>% 
+                      dcast(sample_name ~ subfam, value.var = 'subfam_prop') 
+                  })
+       }) %>% bind_rows
+
+heatmap.df <- tibble::column_to_rownames(heatmap.df, 
+                                 var = 'sample_name')
+heatmap.df <- t(as.matrix(heatmap.df))
+
+library('ComplexHeatmap')
+heatmap.df[is.na(heatmap.df)] <- 0
+Heatmap(heatmap.df, 
+        cluster_rows = TRUE, 
+        cluster_columns = TRUE,
+        column_split = 10)
+
+```
+
+```{r node-df_tpmvalues}
+
+# Add the TPM values to the node.df dataset alongside a threshold expressed/not expressed
+
+# Get a list of all the de novo transcripts and their median TPM. 
+#  Shouldn't be any with the same name unless by exceptional chance?
+gene_quant <- lapply(names(expt_quant), 
+                     function(expt.name) {
+                       expt.list <- expt_quant[[expt.name]]
+                       # print(names(expt.list))
+                       lapply(names(expt.list), 
+                              function(quant.name) {
+                                quant.df <- expt.list[[quant.name]]
+                                if(!is.null(quant.df)){
+                                  #Melt the dataframe to calculate the median TPM value for each de novo transcript across all samples.
+                                  quant.df %>% 
+                                    reshape2::melt(.,
+                                                   id.vars = c('pir','Name'),
+                                                   measure.vars = str_subset(colnames(.), 
+                                                                             pattern = 'TPM'),
+                                                   value.name = 'tpm') %>% 
+                                    group_by(Name, pir) %>% 
+                                    summarise(med_tpm = median(tpm),
+                                              max_tpm = max(tpm)) %>% 
+                                    mutate(label_no_end = paste(quant.name, Name, sep = '_'),
+                                           expt_assembly = paste(expt.name, quant.name, sep = '_'))
+                                }
+                              }) %>% 
+                         bind_rows
+                     }) %>% 
+  bind_rows
+
+# Need to add the assembly name to the transcript name (as in node.df) because some are the same, which I find surprising!
+# Some are from the same assemblies but not all of them:
+# gene_quant[gene_quant$Name == 'NODE_24950_length_245_cov_2.19474',]
+
+```
+
+```{r over1tpm_listFiles}
+#Note that node_tpm.df includes none-quantified genes, like P01/Sal1/Zhu16 and the Rangel genes.
+# Will use over or equal to 1 TPM in at least one sample (max_tpm > 1) as the threshold for active transcription.
+expressed_pirTranscripts <- filter(gene_quant, pir, max_tpm>=1)
+
+paste0('Number of transcribed pirs = ',
+       nrow(expressed_pirTranscripts),
+       ' and number of non-transcribed pirs = ',
+       nrow(filter(gene_quant, pir)) - nrow(expressed_pirTranscripts))
+
+G18G19_hmmerVir200aa.fa <- read.fasta('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')
+
+names_no_end <- str_remove(names(G18G19_hmmerVir200aa.fa), pattern = '_[[:digit:]]{1,2}$')
+
+#These aren't all unique, I guess this doesn't impact anything later.
+
+#Subset the fasta file by the pirs which are actively transcribed.
+# Note that this may be greater than expected due to the fact that there may be multiple pir ORFs for one expressed pir transcript.
+# Also it is smaller than the number of expressed_pirTranscripts because not all of the expressed_pirTranscripts have a >200aa ORF.
+# Note that the pirs are defined as such based on the *_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir.list files (so before 200aa filtering).
+
+G18G19_hmmerVir200aa_tpmOver1.fa <- G18G19_hmmerVir200aa.fa[
+  names(G18G19_hmmerVir200aa.fa)[names_no_end %in% expressed_pirTranscripts$label_no_end]
+  ]
+print(paste0('Number of ORFs (>200aa ORF tpm over 1) = ',
+      length(G18G19_hmmerVir200aa_tpmOver1.fa)))
+print(paste0('Number of unique transcripts (>200aa ORF tpm over 1) = ',
+      length(unique(str_extract(names(G18G19_hmmerVir200aa_tpmOver1.fa), 
+                   pattern = '.+(?=_[[:digit:]]$)')))))
+
+table(str_extract(names(G18G19_hmmerVir200aa_tpmOver1.fa), pattern ='.+(?=_NODE)'))
+
+# write.fasta(G18G19_hmmerVir200aa_tpmOver1.fa,
+#             names(G18G19_hmmerVir200aa_tpmOver1.fa),
+#             file.out = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
+
+```
+
+```{r Num-pir-transcript_v_Num-transcript-total}
+assembly_info.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt') %>% 
+  filter(!grepl(assembly, pattern = '0\\.9c|0\\.99'),
+         !grepl(assembly, pattern = 'SRX5158513_SRR8347514|SRX5158512_SRR8347515'))  
+#Filter out any none-0.95 assembly made. And potential Kim19_A duplicate?
+
+#Order experiments by years
+expt_num.vec <-ordering(unique(assembly_info.df$experiment), 
+                                   order_vector = c(16:22))
+#Get experiment numbers and add '0' to single digit numbers.
+names(expt_num.vec) <-  paste0('E', 
+                              sapply(seq_along(expt_num.vec), function(x){
+                                ifelse(nchar(x)==1, 
+                                       paste0('0', x),
+                                       x)
+                              }))
+
+#Manually add Gunalan19 and _Boonkaew20 (in addition to Guna19 and Boonkaew20)
+expt_num.vec <- c(expt_num.vec, E07 = 'Gunalan19', E08 = '_Boonkaew20')
+
+#Get the relevant info from samplesheet otherwise loads of rows will be duplicated when joining.
+samplesheet_small.df <- mutate(samplesheet, assembly_file = assembly) %>% 
+  select(assembly_file, Cat.Sample.stage.s.) %>% unique
+
+assembly_info_samplesheet.df <- left_join(assembly_info.df, samplesheet_small.df, by = 'assembly_file')
+
+assembly_info_samplesheet.df <- mutate(assembly_info_samplesheet.df,
+                                        experiment_num = names(expt_num.vec)[match(experiment,
+                                                                                  expt_num.vec)])
+
+#Get consistent shapes and colours for the graphs
+
+shapes_val <- 1:length(unique(assembly_info_samplesheet.df$Cat.Sample.stage.s.))
+names(shapes_val) <- unique(assembly_info_samplesheet.df$Cat.Sample.stage.s.)
+
+colours_val <- safe_colorblind_palette[1:length(unique(names(expt_num.vec)))]
+names(colours_val) <- unique(names(expt_num.vec))
+
+expt_num.df <- data.frame(expt = expt_num.vec, 
+                          expt_code = names(expt_num.vec), 
+                          col = c(colours_val,colours_val['E07'],colours_val['E08']))
+# write.csv(expt_num.df,
+#           file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/expt_codes.csv',
+#           row.names = FALSE)
+
+  
+( plot <- ggplot(assembly_info_samplesheet.df, 
+       aes(x = num_transcripts,
+           y = num_uniq_mRNA_ORFs_over200aaLength,
+           col = experiment_num,
+           shape = Cat.Sample.stage.s.
+       )) +
+  geom_point(size = 1, stroke = 2, alpha = .75) +
+  scale_shape_manual(values=shapes_val,
+                     name = 'Life cycle stage',
+                     guide = guide_legend(ncol = 2)) +
+  scale_color_manual(values = colours_val,
+                     name = 'Experiment',
+                     guide = guide_legend(ncol = 2)) +
+  xlab('Number of assembled transcripts') +
+  ylab(expression(paste('Number of putative ', italic('pir'), ' transcripts'))) +
+  theme_classic() )
+
+if(global_save_var){
+  ggsave(plot = plot,
+         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_numPirTranscripts_totalTranscripts.pdf',
+         device = 'pdf',
+         width = 7,
+         height = 5,
+         units = "in")
+}
+```
+
+ISSUE: Why is the number of sequences in '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta' larger than sum(assembly_info_samplesheet.df£$num_uniq_mRNA_pirHMMerORFs_nomatch95known_over200aa)
+
+Observations:
+* Some drop-outs between the samples? Perhaps because one transcript was exclusively assembled from one sample.

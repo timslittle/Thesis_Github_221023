@@ -1,0 +1,1178 @@
+---
+title: "tl22-01_analysingNetworkStats"
+output: html_document
+---
+
+Going to adapt this script to analyse multiple networks.
+
+What do we want from the optimal network?:
+
+* More sequences included among the larger clusters of the network.
+* Sal1 sub-families are rarely mixed in the same clusters.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      results = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+options(scipen = 999) # Means that numbers are displayed normally not as 1e6 (1000000)
+# getwd()
+```
+
+```{r load_packages}
+library(ggplot2)
+library(stringr)
+library(dplyr)
+library(data.table)
+library(seqinr)
+safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#332288", "#AA4499", 
+                             "#44AA99", "#999933", "#882255", "#6699CC", "#661100", "#888888")
+global_save_var <- FALSE
+```
+
+```{r function_alternateReverse}
+alternateReverse <- function(input.vec){
+  #Alternate the indexes of a vector, with one alternation in reverse order.
+  # Good for colour systems so the end of a gradient is shifted between very different colours.
+  output.vec <- c(rbind(input.vec[seq_along(input.vec)%%2==1], 
+                        rev(input.vec[seq_along(input.vec)%%2==0])))
+  if(length(output.vec) != length(input.vec)){
+    #If input.vec is odd length rbind will add an extra value at the end.
+    # So the length will be longer, this removes the last, erroneous element.
+    return(output.vec[-last(output.vec)])
+  }else{
+    return(output.vec)
+  }
+}
+```
+
+```{r function_uniquify}
+#Make unique identifiers from a vector of names by appending '_X' where X is the number of the 'replicate'.
+uniquify <- function(vector_names, first_one = TRUE){
+  new_vector <- c()
+  df_num <- data.frame(names = unique(vector_names), rep = 1)
+  if(first_one){
+    duplicated_names <- unique(vector_names[duplicated(vector_names)])
+  }else{
+    duplicated_names <- c()
+  }
+  for(i in 1:length(vector_names)){
+    if(vector_names[i] %in% duplicated_names|!first_one){
+      name <- paste(vector_names[i],
+                    df_num$rep[match(vector_names[i], df_num$names)],
+                    sep = '_')
+      #Increase rep counter
+      df_num$rep[match(vector_names[i], df_num$names)] <- df_num$rep[match(vector_names[i], df_num$names)] + 1
+      new_vector[i] <- name
+    }else{
+      new_vector[i] <- vector_names[i]
+    }
+  }
+  new_vector
+}
+```
+
+```{r read_data}
+accession_table <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samples_to_cat.csv')
+assembly.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt')
+subfam.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-02_VirSubfamNetwork/pir_info/lopez13_vir_subfam.txt', header = FALSE)
+colnames(subfam.df) <- c('Geneid','subfam')
+expt.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/scripts/all-cat.list', header = FALSE, sep = '')
+colnames(expt.df) <- c('Accession', 'expt')
+expt_num.df <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/expt_codes.csv')
+```
+
+```{r MCL_parameters}
+# list.files('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1', 
+  #          pattern = 'mci.+list') %>% 
+  # head %>% 
+  # str_extract_all(pattern = '(?<=_)[[:digit:]]+(?=pid)|[[:digit:]]+(?=lngth)|(?<=mci\\.)I.+(?=\\.list)')
+
+network_file_dir <- '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1'
+
+#Search for all the MCI lists of the clustering, extract the relevant bits which shows the % id, alignment length and inflation factor.
+network_parameters.list <- list.files(network_file_dir, 
+           pattern = 'all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast.mci.I.+list') %>% 
+  str_extract(pattern = 'I.+(?=\\.list)') %>% 
+  # str_replace(pattern = 'NoSame2Same\\.mci\\.', replacement = '_') %>% 
+  unique
+
+#Get the MCI cluster values
+
+mcl.list <- lapply(network_parameters.list,
+                   function(network_parameters){
+                     network_parameters.file <- list.files(network_file_dir,
+                                                           pattern = paste0(
+                                                             'all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast.mci.',
+                                                             network_parameters, 
+                                                             '.list'
+                                                           ),
+                                                           full.names = TRUE)
+                     if(length(network_parameters.file) > 1){
+                       stop(paste0('More than 1 possible file found for one set of network parameters for ',
+                                   network_parameters))
+                     }
+                     
+        #Read_table saves the number of the line of the sequences (each line is a cluster) as a separate column
+        network_parameters.table <- read.table(network_parameters.file)
+        colnames(network_parameters.table) <- c('label', 'mcl_cluster')
+        
+        return(network_parameters.table)
+       })
+names(mcl.list) <- network_parameters.list
+```
+
+```{r get_MCLclusters}
+fasta <- read.fasta(file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
+
+inflation_values <- unique(str_extract(names(mcl.list),
+                                       pattern = '(?<=I).+'))
+
+# sequence.df <- lapply(names(fasta),
+#        function(sequence.name){
+#          if(grepl(sequence.name,
+#                   pattern = 'P01|PVX|comp')){
+#            #For the known pirs, which have P01, PVX or comp in the sequence name.
+#            seq_source <- case_when(
+#              grepl(sequence.name, pattern = 'P01') ~ 'P01',
+#              grepl(sequence.name, pattern = 'PVX') ~ 'Sal1',
+#              grepl(sequence.name, pattern = 'comp') ~ 'Zhu16'
+#            )
+#            seq_expt <- 'known'
+#            #Get the subfam number for the Sal1 sequences.
+#            seq_subfam <- ifelse(seq_source == 'Sal1',
+#                                 subfam.df$subfam[match(sequence.name,
+#                                                        subfam.df$Geneid)],
+#                                 seq_source)
+#            #Need to set the Sal1 sequences which don't have sub-family assignments to just Sal1
+#            #  They are NA at this point.
+#            seq_subfam <- ifelse(is.na(seq_subfam) && seq_source == 'Sal1',
+#                   'Sal1',
+#                   seq_subfam)
+# 
+#          }else{
+#            #Get source name of de novo pirs from the first section of the sequence name
+#            seq_source <- str_extract(sequence.name,
+#                                      pattern = ".+(?=_NODE.+)")
+#            seq_subfam <- 'assembled'
+#            seq_expt <- expt.df$expt[match(seq_source, expt.df$Accession)]
+#          }
+# 
+#          #Get Id (just a number) from the index of the sequence.
+# 
+#          info.df <- data.frame(Id = which(names(fasta) == sequence.name),
+#                                label = sequence.name,
+#                                source = seq_source,
+#                                subfam = seq_subfam,
+#                                expt = seq_expt)
+# 
+#          #Get the 10pid25lngthNoSame2Same.mci.IX values as this uses the most data and is the MCL clustering done with the most data.
+# # 
+# # mcl_10pid25lngth <- lapply(inflation_values,
+# #                            function(infl){
+# #                              mcl.df <- getElement(mcl.list,
+# #                                                   paste0('10pid25lngthNoSame2Same.mci.I',
+# #                                                          infl))
+# #                            })
+# # names(mcl_10pid25lngth) <- inflation_values
+# 
+#          #Go through the mcl.list to get the mcl cluster number for this sequence in each cluster.
+#          # Make a dataframe to bind_cols with the previous information df.
+#          sequence_mcl.df <- lapply(names(mcl.list),
+#                 function(network_parameters){
+#                   mcl.df <- getElement(mcl.list, network_parameters)
+#                   #If it is in this network (i.e. has a BLAST alignment), then get cluster number
+#                   # from 10pid25lngthNoSame2Same.mci.IX.
+#                   # If not in the network, give a cluster number of zero
+#                   # mcl_10pid25lngth_netpara <- getElement(mcl_10pid25lngth,
+#                   #                                        str_extract(network_parameters,
+#                   #                                                    pattern = '(?<=I).+'))
+#                   mcl_cluster_num <- ifelse(sequence.name %in% mcl.df$label,
+#                                             mcl.df$mcl_cluster[match(sequence.name,
+#                                                                                        mcl.df$label)],
+#                                             0)
+#                   mcl_cluster_num.df <- data.frame(mcl_cluster_num)
+#                   colnames(mcl_cluster_num.df) <- network_parameters
+#                   return(mcl_cluster_num.df)
+#                 }) %>% bind_cols
+# 
+#          return(bind_cols(info.df, sequence_mcl.df))
+#        }) %>% bind_rows
+# 
+
+# 
+# write.table(sequence.df,
+#             file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1.txt')
+
+sequence.df <- read.table(file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1.txt',
+                          check.names = FALSE)
+
+# # How many sequences have all zeros? Sequence.df should have same row num as fasta file length.
+notInNetwork <- sequence.df[apply(sequence.df[,grepl(colnames(sequence.df), pattern  = '^I[[:digit:]]')], 
+                     1, 
+                     function(x) all(x == 0)),]$label
+```
+
+```{r blast_networks}
+perc_ident.vec <- c(10,20,30,40,50,60,70,80,90)
+length_aa.vec <- c(25,50,75,100,150,200,250,300)
+
+# pid_lntgh.df <- lapply(perc_ident.vec, function(perc_ident){
+#   lapply(length_aa.vec, function(length_aa){
+#     #Read in BLAST file for these percentage id and length aa 
+#     # Get a list of the unique sequences from the first two columns
+#     blast.names <- read.delim(paste0(
+#       '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_',
+#       perc_ident,'pid',
+#       length_aa,'lngthNoSame2Same.blast'
+#     ),
+#     header = FALSE) %>% 
+#       .[,c(1,2)] %>% 
+#       unlist() %>% 
+#       unique
+#     #lapply across the sequences in the fasta to record whether they are present in this network (i.e. in the BLAST file)
+#     in_network.df <- lapply(names(fasta), 
+#            function(seq.id){
+#              in_network <- ifelse(seq.id %in% blast.names,
+#                                   1,
+#                                   0)
+#              return(data.frame(label = seq.id, 
+#                                in_network = in_network,
+#                                pid = perc_ident,
+#                                lngth = length_aa))
+#            }) %>% bind_rows
+#   })
+# }) %>% bind_rows
+
+```
+
+```{r long_form_sequence.df}
+# sequence.df.melt <- melt(sequence.df, 
+#                          id.vars = c('Id','label','subfam','source','expt'),
+#                          variable.name = 'network_parameters',
+#                          value.name = 'cluster_num') %>% 
+#   group_by(network_parameters, cluster_num) %>% 
+#   mutate(cluster_size = n_distinct(label)) %>% 
+#   group_by(network_parameters) %>% 
+#   mutate(total_clusters = n_distinct(cluster_num),
+#          total_clusters_over2 = n_distinct(cluster_num[cluster_size > 2]),
+#          inflation = str_extract(network_parameters, pattern = '(?<=I).+'))
+# 
+# # all(sequence.df.melt$total_clusters >= sequence.df.melt$total_clusters_over2)
+# 
+# #Join the BLAST parameters and whether or not they're part of the network. 
+# # Set the cluster_num to zero for not being in the network.
+# sequence.df.melt <- inner_join(pid_lntgh.df, sequence.df.melt, by = 'label') %>% 
+#   mutate(cluster_num = cluster_num*in_network) %>% 
+#   group_by(pid, lngth, inflation) %>% 
+#   mutate(num_inNetwork = sum(cluster_num > 0)) %>% 
+#   select(-in_network)
+
+# write.table(sequence.df.melt,
+#             file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_longForm.txt')
+sequence.df.melt <- read.table(file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_longForm.txt')
+```
+
+```{r not_in_top100}
+group_by(sequence.df.melt, pid, lngth, inflation) %>% 
+  filter(cluster_num < 1 | cluster_num > 100) %>% 
+  summarise(num = n_distinct(label)) %>% 
+  arrange(num) 
+```
+
+```{r}
+#Networks with large, un-subfam-mixed clusters
+# Largest cluster is unmixed?
+# Where is the highest I, J, B unmixed cluster?
+
+cluster_subfam_mixing.df <- sequence.df.melt %>% 
+    filter(source == 'Sal1',
+           subfam %in% c('C','E','G','I','K','J','B'),
+           cluster_num > 0) %>% 
+  select(-Id, -source, -expt) %>% 
+  group_by(across(-label)) %>% 
+  #With the subfams I want to see which networks have the largest, unmixed, with all subfam in as few clusters as possible
+  summarise(num_members = n_distinct(label)) %>% 
+  group_by(pid, lngth, inflation, subfam) %>% 
+  mutate(sf_total_groups = n_distinct(cluster_num)) %>% 
+  group_by(across(-c(subfam, num_members, sf_total_groups))) %>% 
+  summarise(subfam_members = paste(paste0(subfam, ' (', num_members, ' - ', sf_total_groups, ')'), collapse = ', '),
+            max_prop = max(num_members)/sum(num_members)) %>% 
+  arrange(desc(cluster_size), desc(num_inNetwork))
+```
+
+```{r plotly}
+df <- group_by(cluster_subfam_mixing.df, pid, lngth, inflation, num_inNetwork) %>%
+  mutate(num_clust = n_distinct(cluster_num)) %>% 
+  filter(cluster_num %in% c(1:15),
+         num_inNetwork > round(4468*0.9)) %>% 
+  group_by(num_inNetwork, num_clust, pid, lngth, inflation, 
+           total_clusters, total_clusters_over2) %>% 
+  summarise(avg_maxProps = sum(max_prop)/n_distinct(cluster_num), 
+            max_clustSize = max(cluster_size)) %>% 
+  arrange(desc(avg_maxProps), num_clust)
+
+library(plotly)
+plot_ly(df, x = ~avg_maxProps, y = ~total_clusters, size = ~num_inNetwork,
+        symbol = ~pid, color = ~lngth, text = ~paste0(pid,lngth,inflation))
+ggplot(df,
+       aes(x = avg_maxProps, 
+              y = as.integer(total_clusters), 
+              # size = inflation,
+              shape = factor(lngth), 
+              color = factor(inflation)
+           )) +
+  scale_color_manual(values = safe_colorblind_palette) +
+  geom_point() +
+  theme_classic() +
+  guides(color = guide_legend(ncol = 2),
+         size = guide_legend(ncol = 2),
+         shape = guide_legend(ncol = 2)) +
+  facet_wrap(facets = vars(pid))
+```
+
+
+```{r}
+cluster_subfam_mixing.df %>% 
+  filter(grepl(subfam_members, pattern = '^J'))
+
+cluster_subfam_mixing.df %>% 
+  filter(grepl(subfam_members, pattern = '^I'))
+
+cluster_subfam_mixing.df %>% 
+  filter(grepl(subfam_members, pattern = '^K')) %>% arrange(desc(num_inNetwork))
+
+lapply(c(25, 50, 75, 100, 150),
+       function(length){
+         filter(cluster_subfam_mixing.df, 
+                pid == 50,
+                lngth == length,
+                inflation == 1.4) %>% 
+           select(!c(pid, lngth, inflation))
+       })
+
+
+filter(cluster_subfam_mixing.df, 
+       pid == 30,
+       lngth == 25,
+       inflation == 1.4) %>% 
+  select(!c(pid, lngth, inflation))
+
+```
+
+50pid, 50/25 lngth appears to be the best now.
+
+
+```{r read_data}
+
+# node.df <- filter(sequence.df.melt,
+#        pid == 30,
+#        lngth == c(25)) %>% 
+#   mutate(network_parameters = paste0(pid,'pid',lngth,'lngthI',inflation)) %>% 
+#   dcast(label + Id + source + subfam + expt ~ network_parameters, value.var = 'cluster_num')
+# 
+# write.csv(node.df,
+#           '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv',
+#           row.names = FALSE,
+#           quote = FALSE)
+
+node.df <- read.csv(
+  '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv')
+
+node.df[apply(node.df[,str_detect(colnames(node.df), pattern = 'pid.+lngth')], 
+              1,
+              function(x) all(x == 0)),] %>% 
+  filter(!label %in% notInNetwork) %>% 
+  select(label, subfam)
+
+```
+
+```{r define_subfam}
+
+#Define the sub-families of the clusters using the assigned Sal1 members.
+# This process works by going through the sub-families present in each cluster,
+#   then defining the overall cluster based on the Sal1 present/not present.
+#   Thenn filtering to ensure that there's only the one assignment for each cluster.
+
+ #If there are no Sal1 sequences in the cluster say 'unassigned'
+
+cluster_subfam.df <- node.df %>% 
+  ungroup %>% 
+ #Set non-Sal1 to 'unassigned', so that clusters only made up of them are named such.
+  mutate(subfam = ifelse(subfam %in% c('assembled','P01','Zhu16'),
+                         'unassigned',
+                         subfam)) %>% 
+  dplyr::group_by(X30pid25lngthI1.4, subfam) %>% 
+  dplyr::summarise(num = n_distinct(label)) %>% 
+  group_by(X30pid25lngthI1.4) %>% 
+  mutate(total_subfam = n_distinct(subfam),
+         total_pirs = sum(num)) %>% 
+  group_by(X30pid25lngthI1.4, total_pirs) %>% 
+  #Only keep 'unassigned'/'Sal1' if it is the only subfamily present (i.e. entire cluster is unassigned).
+  # Unless only other subfam in cluster is unassigned/Sal1, then I want this to be unassigned.
+  filter(!(subfam %in% c('unassigned', 'Sal1') & total_subfam > 1) | all(subfam %in% c('unassigned','Sal1'))) %>% 
+  #Calculate the percentage the subfams constitute of each subfam to see if any groups are split between sub-families.
+  mutate(subfam_perc = round(100*num/sum(num), digits = 2)) %>% 
+  #Keep the subfam name if it makes up over 50% of the number of subfamily members in the cluster.
+  # This will now become the subfam assignment of the cluster.
+  # If there's no dominating subfam then assign it as mixed.
+  mutate(mixed = ifelse(all(100*num/sum(num) <= 50), 'mixed', 'dom')) %>% 
+  summarise(subfam_num = paste0(subfam, ' (n = ', num, ')', collapse = '; '),
+            subfam_clust = case_when(
+              #Need convert the genes in no clusters into it's own noCluster group. 
+              # (not part of the BLAST network/no alignments)
+              # convert to integer and character because being a factor makes it tricky
+              as.integer(as.character(X30pid25lngthI1.4)) == 0 ~ 'noCluster',
+              100*num/sum(num) > 50 ~ subfam,
+              mixed == 'mixed' ~ 'mixed',
+              TRUE ~ ''
+            )
+  ) %>% 
+  #Remove the rows with an empty subfam_clust (grep for a letter of the alphabet) 
+  filter(grepl(subfam_clust, pattern = '[[:alpha:]]')) %>% 
+  #Use unique to remove the redundant rows this creates for the 'mixed' samples
+  unique %>% 
+  mutate(clust_num = X30pid25lngthI1.4)
+  
+#Uniquify for numbering the subfam
+cluster_subfam.df$subfam <- uniquify(cluster_subfam.df$subfam_clust, 
+                           first_one = TRUE)
+# Create column subfam_assignment to make code later easier since node.melt already has 'subfam' column
+cluster_subfam.df$subfam_assignment <- uniquify(cluster_subfam.df$subfam_clust, 
+                           first_one = TRUE)
+
+# write.csv(cluster_subfam.df,
+#           file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/cluster_subfam_30pid25lngthI1.4.csv',
+#           row.names = FALSE,
+#           quote = FALSE)
+
+```
+
+
+```{r write_edge.csv}
+
+# blast_30pid25lngth.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_30pid25lngthNoSame2Same.blast',
+#            header = FALSE)
+# 
+# node_labels.df <- blast_30pid25lngth.df %>%
+#   rowwise() %>%
+#   mutate(label1 = node.df$Id[node.df$label %in% V1],
+#          label2 = node.df$Id[node.df$label %in% V2]) %>%
+#   select(V1,V2,label1, label2)
+# 
+# node_labels_noDup.df <- node_labels.df[!duplicated(apply(node_labels.df,
+#                                                          sort,
+#                                                          MARGIN =1),
+#                                                    MARGIN=2),]
+# #Already appears to have same2same matches absent.
+# 
+# node_labels_noDup_toSave.df <- select(node_labels_noDup.df, label1, label2)
+# colnames(node_labels_noDup_toSave.df) <- c('Source', 'Target')
+
+# write.csv(node_labels_noDup_toSave.df,
+#           file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/edges_30pid25lngthNoS2S.csv',
+#           row.names = FALSE,
+#           quote = FALSE)
+
+```
+
+#Want to show the stages of development in this.
+
+```{r expt_name}
+
+#Extract the first two numbers of the name e.g. ERX2560125_ERR2541707
+stage_geog.df <- bind_rows(
+  lapply(
+    assembly.df$assembly, 
+    function(assembly_name){
+      accession_name <- str_extract(assembly_name, 
+                                    pattern = '(SR|ER).{8,9}_(SR|ER).{8,9}(?=_)')
+      #If this works (not NA and only two elements) then find the expt name in the table
+      if(!is.na(accession_name) & length(unlist(strsplit(accession_name, '_'))) == 2){
+        cat_sample_stage <- accession_table$Cat.Sample.stage.s.[grepl(accession_table$fastq_1, pattern = accession_name)]
+        geog_source <- accession_table$Geography_source[grepl(accession_table$fastq_1, pattern = accession_name)]
+      } else {
+        #Get the first two elements of the name (separated by '_') - split then paste back together.
+        expt_name <- paste(str_split_fixed(assembly_name, 
+                                           pattern = '_', n = 3)[c(1,2)], collapse = '_')
+        if(any(grepl(accession_table$Concatenated.file, 
+                     pattern = expt_name))){
+          #Otherwise this is probably a re-named concatenated file of samples, so
+          # we need the 'Concatenated file' column.
+          cat_sample_stage_all <- accession_table$Cat.Sample.stage.s.[grepl(accession_table$Concatenated.file, 
+                                                                            pattern = expt_name)]
+          geog_source_all <- accession_table$Geography_source[grepl(accession_table$Concatenated.file, 
+                                                                    pattern = expt_name)]
+        } else {
+          #Instead of being sensible I had a different naming scheme for the un-concatenated Kim and Gunalan files.
+          cat_sample_stage_all <- accession_table$Cat.Sample.stage.s.[grepl(accession_table$file_prefix, 
+                                                                            pattern = expt_name)]
+          geog_source_all <- accession_table$Geography_source[grepl(accession_table$file_prefix, 
+                                                                    pattern = expt_name)]
+        }
+        
+        cat_sample_stage <- unique(cat_sample_stage_all)
+        geog_source <- unique(geog_source_all)
+        
+        if(rlang::is_empty(cat_sample_stage) | rlang::is_empty(geog_source)){
+          stop(paste0('No life cycle stage or geographical source name for assembly ', assembly_name))
+        }
+        
+        if(!length(cat_sample_stage) == 1){
+          cat_sample_stage <- 'Mixed.stages' 
+        }
+        
+        if(!length(geog_source) == 1){ 
+          geog_source <- 'Mixed.sources'
+        }
+        
+      }
+      return(data.frame(assembly = assembly_name, stage = cat_sample_stage, geog_source = geog_source))
+    })
+)
+```
+
+# Spread of experiments
+
+```{r expt_makeup_of_clusters}
+
+node.melt <- node.df %>% 
+  setDT %>% 
+  melt(measure.vars = patterns('lngth'), 
+       variable.name = 'mcl', 
+       value = 'clust_num') %>% 
+  mutate(mcl = as.character(mcl),
+         expt = ifelse(expt == 'known',
+                       paste0(source,'_known'),
+                       expt_num.df$expt_code[match(expt, expt_num.df$expt)])) %>% 
+  inner_join(., cluster_subfam.df, by = 'clust_num')
+
+safe_colorblind_palette_expt <- c(expt_num.df$col[1:9],
+                                  hcl.colors(3, palette = "Lajolla")[1:3])
+names(safe_colorblind_palette_expt) <- c(expt_num.df$expt_code[1:9],
+                                         unique(node.melt$expt)[
+                                           grepl(unique(node.melt$expt), 
+                                                 pattern = 'known')
+                                         ])
+
+lapply(unique(node.melt$mcl), 
+       function(mcl_name){
+         
+         node.melt.df <- filter(node.melt, 
+                                mcl == paste(mcl_name)) %>% 
+           group_by(clust_num, mcl) %>% 
+           mutate(clust_size = paste0(clust_num, ' (n=', 
+                                     n_distinct(label), ')')) %>% 
+           group_by(expt, clust_num, clust_size) %>% 
+           filter(clust_num %in% 1:20) %>% 
+           dplyr::summarize(num = n_distinct(label)) %>% 
+           arrange(clust_num)
+         
+         node.melt.df$clust_size <- factor(node.melt.df$clust_size,
+                                           levels = unique(node.melt.df$clust_size))
+         node.melt.df$expt <- factor(
+           node.melt.df$expt,
+           levels = names(safe_colorblind_palette_expt)[
+             names(safe_colorblind_palette_expt) %in% unique(node.melt.df$expt)
+           ]
+         )
+         
+         lapply(c('withKnown','onlyDeNovo'), 
+                function(include){
+                  
+                  if(include == 'onlyDeNovo'){
+                    node.melt.df <- filter(node.melt.df, 
+                                           !grepl(expt, pattern = 'known'))
+                  } else {
+                    #Removing the '_known' from the P01 etc names so that the legend fits better.
+                    node.melt.df <- mutate(node.melt.df, 
+                                           expt = str_remove(expt, pattern = '_known'))
+                    names(safe_colorblind_palette_expt) <- str_remove(names(safe_colorblind_palette_expt),
+                                                                      pattern = '_known')
+                  }
+                  
+                  plot <- ggplot(data = node.melt.df,
+                                 aes(x = clust_size, 
+                                     y = num, 
+                                     fill = expt)) +
+                    geom_col(position = 'fill') +
+                    xlab('Cluster number') +
+                    ylab('Proportion of assembled pirs\nin each cluster') +
+                    scale_fill_manual(values = safe_colorblind_palette_expt[
+                      names(safe_colorblind_palette_expt) %in% unique(node.melt.df$expt)
+                    ],
+                    guide = guide_legend(title = 'Experiment') )+
+                    ggtitle(paste(mcl_name)) +
+                    theme_classic() +
+                    theme(axis.text.x = element_text(angle = 90,
+                                                     vjust = 0.5))
+                  
+                  if(global_save_var){
+                    ggsave(plot = plot,
+                           paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_exptComposition_',
+                                  include,'_',mcl_name,'.pdf'),
+                           device = 'pdf',
+                           width = 7,
+                           height = 5,
+                           units = "in")
+                  }
+                  
+                  return(plot)
+                })
+       })
+```
+
+```{r expt_composition}
+# How many clusters to include? e.g. 10 is the top ten largest clusters.
+# Uses clust_num to subset this, so including 0 will include noCluster.
+num_clusters <- 10
+clusters_include <- filter(cluster_subfam.df, 
+                           clust_num %in% 1:10)$subfam_assignment
+
+#Get standardised colours 
+top_subfam_col <- read.csv('top_subfam_col.csv')
+
+
+node.melt.df <- filter(node.melt, 
+                                mcl == 'X30pid25lngthI1.4',
+                       expt != 'E05') %>% 
+  group_by(subfam_assignment, mcl) %>% 
+  mutate(clust_size = paste0(subfam_assignment, ' (n=', 
+                             n_distinct(label), ')'),
+         clust_numbers = n_distinct(label) ) %>% 
+  group_by(expt) %>% 
+  mutate(expt = paste0(expt, ' (n=', 
+                       n_distinct(label), ')')) %>% 
+  group_by(expt, subfam_assignment, clust_size, clust_numbers) %>% 
+  filter(subfam_assignment %in% clusters_include) %>% 
+  dplyr::summarize(num = n_distinct(label)) %>% 
+  arrange(desc(clust_numbers))
+
+node.melt.df <- mutate(node.melt.df, 
+                       is_known = str_detect(expt, pattern = '_known'),
+                       expt = str_remove(expt, pattern = '_known'))
+
+
+node.melt.df$clust_size <- factor(node.melt.df$clust_size,
+                                  levels = unique(node.melt.df$clust_size))
+# node.melt.df$expt <- factor(
+#   node.melt.df$expt,
+#   levels = names(safe_colorblind_palette_expt)[
+#     names(safe_colorblind_palette_expt) %in% unique(node.melt.df$expt)
+#   ]
+# )
+
+color_palette <- c(
+  hcl.colors(num_clusters, 
+             palette = 'Spectral')[1:(num_clusters/2)],
+  hcl.colors(num_clusters/2, 
+             palette = 'viridis')
+)
+# %>% 
+#   alternateReverse()
+
+colours_subfam <- inner_join(node.melt.df, 
+                             top_subfam_col, 
+                             by = 'subfam_assignment')
+top_subfam_col.vec <- setNames(unique(colours_subfam$colours),
+                           unique(colours_subfam$clust_size))
+
+( plot <- ggplot(data = node.melt.df,
+                 aes(x = expt, 
+                     y = num, 
+                     fill = clust_size)) +
+    geom_col(position = 'fill') +
+    xlab('Experiment') +
+    ylab(expression(paste('Proportion of ', 
+                          italic(pir), 
+                          's from each cluster'))) +
+    scale_fill_manual(
+      values = c( 
+        top_subfam_col.vec
+      ),
+      guide = guide_legend(title = 'Cluster')
+    ) +
+    theme_classic() +
+    facet_grid(~ is_known, scales = 'free_x', space = 'free') +
+    theme(axis.text.x = element_text(angle = 90,
+                                     vjust = 0.5),
+          strip.text.x = element_blank(),
+          strip.background = element_blank())
+  )
+  
+
+if(global_save_var){
+  ggsave(plot = plot,
+         paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_clustComp_Expt.pdf'),
+         device = 'pdf',
+         width = 7,
+         height = 8,
+         units = "in")
+}
+```
+
+```{r geog_source}
+geog.df <- filter(node.melt, 
+                       mcl == 'X30pid25lngthI1.4') %>%
+  #Get the geographic source from the stage_geog.df. Need to extract the part of the assembly name without '_scapdes_0.95cdhitest'
+  mutate(geog_source = stage_geog.df$geog_source[match(source, 
+                                                       str_extract(stage_geog.df$assembly, 
+                                                                           pattern = '.+(?=_scspades)'))] ) %>% 
+  group_by(clust_num, mcl) %>% 
+  mutate(clust_size = paste0(clust_num, ' (n=', 
+                             n_distinct(label), ')')) %>% 
+  group_by(expt) %>% 
+  mutate(expt_size = n_distinct(label)) %>% 
+  group_by(clust_num, clust_size, geog_source, expt, expt_size) %>% 
+  filter(clust_num %in% 1:20,
+         !is.na(geog_source)) %>% 
+  dplyr::summarize(num = n_distinct(label),
+                   num_norm = n_distinct(label)/expt_size
+                   ) %>%
+  arrange(clust_num) %>% 
+  unique()
+#For some reason calculating num_norm means we need to use unique
+
+geog.df$clust_size <- factor(geog.df$clust_size,
+                                           levels = unique(geog.df$clust_size))
+
+ggplot(data = filter(geog.df, !clust_num %in% c(1,18)),
+                                 aes(x = clust_size, 
+                                     y = num_norm, 
+                                     fill = geog_source)) +
+                    geom_col(position = 'stack', col = 'black') +
+                    xlab('Cluster number') +
+                    ylab('Number of assembled pirs\nin each cluster normalized by total expt num') +
+                    # scale_fill_manual(values = safe_colorblind_palette_expt[
+                    #   names(safe_colorblind_palette_expt) %in% unique(node.melt.df$expt)
+                    # ],
+                    # guide = guide_legend(title = 'Experiment') )+
+                    # ggtitle(paste(mcl_name)) +
+                    theme_classic() +
+                    theme(axis.text.x = element_text(angle = 90,
+                                                     vjust = 0.5))
+```
+
+
+Generally the assembled pirs are pretty well spread out throughout the top 10 clusters.
+
+## What's the largest cluster made up of 100% from one experiment?
+
+```{r largest_100pc_cluster}
+lapply(unique(node.melt$mcl), 
+       function(mcl_name){
+filter(node.melt, 
+                mcl == paste(mcl_name)) %>% 
+  group_by(clust_num) %>% 
+  mutate(clust_num_num = sum(n_distinct(label))) %>% 
+  group_by(expt, clust_num, clust_num_num, mcl) %>% 
+  dplyr::summarize(prop = 100*round(n_distinct(label)/clust_num_num, digits = 3)) %>% 
+   # Why do I need to call unique instead of summarise() doing it properly?
+   unique %>% 
+  arrange(desc(prop), desc(clust_num_num)) %>% 
+  .[1:20,]
+       })
+```
+
+The largest clusters 100% from one experiment are only five nodes in size. Cluster 25 (n=9) is entirely P01.
+
+```{r clusters_dominated_by_expt}
+lapply(unique(node.melt$mcl), 
+       function(mcl_name){
+         filter(node.melt, 
+                mcl == paste(mcl_name)) %>% 
+  group_by(clust_num) %>% 
+  mutate(clust_num_num = sum(n_distinct(label))) %>% 
+  filter(clust_num_num > 10) %>% 
+  group_by(expt, clust_num, clust_num_num) %>% 
+  dplyr::summarize(prop = 100*round(n_distinct(label)/clust_num_num, digits = 3)) %>% 
+   # Why do I need to call unique instead of summarise() doing it properly?
+   unique %>% 
+  arrange(desc(prop), desc(clust_num_num)) %>% 
+  .[1:20,]})
+```
+
+There are 14 clusters over ten nodes in size represented >=50% by only one experiment. Most of these are from the 'known' set of pre-existing pirs (P01, Sal1, Zhu16 original assembly).
+
+## How much of each expt is found in the top N clusters?
+
+```{r expt_num_across_clusters, eval = FALSE}
+lapply(unique(node.melt$mcl), 
+       function(mcl_name){
+         node_mcl.df <- filter(node.melt, 
+                               mcl == paste(mcl_name),
+                               !grepl(expt, pattern = 'known')) %>% 
+           mutate(expt = factor(expt)) %>% 
+           group_by(expt) %>% 
+           mutate(expt_num = sum(n_distinct(label)))
+         num_clust <- length(unique(node_mcl.df$clust_num))
+         expt_prop_across_clusters <- lapply(c(0:9,seq(10,num_clust + 5,1)),
+                                             function(cluster_name){
+                                               # Need to convert expt to a factor so that complete() later will add the missing values for large cluster number.
+                                               # Also need a special case for when using 0 clusters, to get the lines to start at 100%.
+                                               if(cluster_name != 0){node_mcl.df <- filter(node_mcl.df,
+                                                                                     !clust_num %in% 1:cluster_name)} 
+                                                 node_mcl.df %>%  
+                                                 group_by(expt) %>% 
+                                                 mutate(expt_num_noTen = sum(n_distinct(label))) %>% 
+                                                 summarize(prop = 100*round(expt_num_noTen/expt_num, digits = 3)) %>% 
+                                                 unique %>% 
+                                                 ungroup %>%  
+                                                 tidyr::complete(expt, fill = list(prop = 0)) %>% 
+                                                 mutate(num_clusters = cluster_name)
+                                             }) %>% bind_rows()
+         
+         plot <- ggplot(data = expt_prop_across_clusters,
+                aes(y = prop, x = num_clusters, col = expt, linetype = expt)) +
+           geom_step() + 
+           scale_color_manual(values = safe_colorblind_palette_expt[
+             names(safe_colorblind_palette_expt) %in% unique(expt_prop_across_clusters$expt)
+           ],
+           labels = names(safe_colorblind_palette_expt)[
+             names(safe_colorblind_palette_expt) %in% unique(expt_prop_across_clusters$expt)
+           ],
+           guide = guide_legend(ncol = 2)) +
+           scale_linetype_manual(values = c(1,1,1,1,1,3,3,2,2),
+                                 labels = names(safe_colorblind_palette_expt)[
+                                   names(safe_colorblind_palette_expt) %in% unique(expt_prop_across_clusters$expt)
+                                 ]) +
+           theme_classic() 
+         
+         if(global_save_var){
+           ggsave(plot = plot,
+                  paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_exptStep_'
+                         ,mcl_name,'.pdf'),
+                  device = 'pdf',
+                  width = 7,
+                  height = 5,
+                  units = "in")
+         }
+         
+         return(plot)
+       })
+
+```
+
+
+# Spread of sub-family with clusters
+
+Note that some clusters are missing because no Sal1 is present within them e.g. 15.
+
+```{r subfam_makeup_of_clusters}
+
+cbf_1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73", 
+           "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+names(cbf_1) <- c("B","C","E","I","G","J","K", "unassigned")
+cbf_1['unassigned']<- 'black'
+
+lapply(unique(node.melt$mcl), 
+       function(mcl_name){
+         mcl_num_subfamNum.df <- filter(node.melt, 
+                                        mcl == paste(mcl_name)) %>% 
+           #Make clust_num numeric for correct ordering by number.
+           mutate(clust_num = as.numeric(clust_num),
+                  subfam = ifelse(subfam == 'Sal1', 
+                                  'unassigned',
+                                  subfam)) %>% 
+           group_by(subfam, clust_num) %>% 
+           filter(clust_num %in% 1:25, 
+                  source == 'Sal1') %>%
+           dplyr::summarize(num = n_distinct(label)) 
+         
+         plot <- ggplot(data = mcl_num_subfamNum.df,
+                        aes(x = clust_num, y = num, fill = subfam)) +
+           geom_col(position = 'stack') +
+           scale_fill_manual(values = cbf_1,
+                             guide = guide_legend(title = 'Sal1 Sub-family')) +
+           #Set scale_x_cont here so that all cluster numbers are shown.
+           scale_x_continuous(breaks = 1:25) +
+           scale_y_continuous(n.breaks = 10) +
+           xlab('Cluster number') +
+           ylab('Number of pirs') +
+           ggtitle(mcl_name) +
+           theme_classic()
+         
+         if(global_save_var){
+           ggsave(plot = plot,
+                  paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_sal1Composition_',
+                         mcl_name,'.pdf'),
+                  device = 'pdf',
+                  width = 7,
+                  height = 5,
+                  units = "in")
+         }
+         
+           return(plot)
+       })
+```
+
+```{r pir_sizes}
+
+node_length.melt <- filter(node.melt, 
+       mcl == 'X30pid25lngthI1.4') %>% 
+  rowwise() %>% 
+  mutate(orf_length = length(getElement(fasta, label))) 
+
+#Can remove all ORFs under 200aa to test how the short 'known' pirs impacts the results.
+# Spoiler: They don't.
+# %>% 
+#   filter(orf_length >= 200)
+
+#Select first 11 clusters and remove the short Zhu16 seqeunces.
+# Order by median length and factor so that ggplot will show in this order.
+node_length_clust1.11_noZhu16.melt <- filter(node_length.melt, 
+                                             clust_num %in% 1:11, 
+                                             expt != 'Zhu16_known') %>% 
+  group_by(clust_num) %>% 
+  mutate(orf_length_med = median(orf_length)) %>% 
+  arrange(desc(orf_length_med)) %>% 
+  ungroup() %>% 
+  # ungroup() so that factor works properly and doesn't sort clust_num
+  mutate(clust_num = factor(clust_num, 
+                            levels = unique(clust_num)))
+
+node_length_clust1.11_noZhu16.melt %>% 
+  group_by(clust_num) %>% 
+  summarise(med_length = median(orf_length))
+
+(plot_orf <- ggplot(node_length_clust1.11_noZhu16.melt, 
+                    aes(x = clust_num,
+                        y= orf_length)) +
+    geom_boxplot() +
+    xlab('Cluster number') +
+    ylab('Length of ORFs (aa)') +
+    theme_classic() +
+    theme(axis.text.x = element_text(size = 13),
+          axis.text.y = element_text(size = 13)) )
+
+if(global_save_var){
+  ggsave(plot = plot_orf,
+         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_ORFlength.pdf',
+         device = 'pdf',
+         width = 7,
+         height = 5,
+         units = "in")
+}
+
+```
+
+```{r orfLengths}
+ggplot(filter(node_length.melt, clust_num %in% c(1,12:20), 
+              expt != 'Zhu16_known'), 
+       aes(x = factor(clust_num),
+           y= orf_length)) +
+  geom_boxplot()
+ggplot(filter(node_length.melt, clust_num %in% 1:11), 
+       aes(x = factor(clust_num),
+           y= orf_length)) +
+  geom_boxplot() + facet_wrap(~expt)
+
+ggplot(filter(node_length.melt, clust_num %in% 1:11), 
+       aes(x = factor(expt),
+           y= orf_length)) +
+  geom_boxplot()
+
+lapply(unique(node_length.melt$expt), function(expt){
+  lengths <- node_length.melt$orf_length[node_length.melt$expt == expt]
+  if(length(lengths) > 2){
+    hist(lengths, 
+         breaks = 100,
+         main = expt,
+         xlim = c(0,900))
+  }
+})
+lapply(1:11, function(clust_num){
+  lengths <- node_length.melt$orf_length[node_length.melt$clust_num == clust_num]
+  if(length(lengths) > 2){
+        hist(lengths, 
+         breaks = 100,
+         main = paste0('Cluster Number ', clust_num),
+         xlim = c(0,900))
+  }
+})
+```
+
+Cluster 8 particularly long?
+
+Looks like there's a little group of longer pirs for some experiments/P01/Sal1.
+Like over 800aa - pretty much all in Cluster 1 (E). 
+I wonder if this is the two groups in the Gephi network.
+
+Cluster 7 and 9 low variability, potentially shorter?
+
+```{r kwtest_length}
+#K-W test of if there is a signif difference between the clusters for length
+
+kruskal.test( node_length.melt$orf_length, factor(node_length.melt$clust_num))
+kruskal.test(node_length_clust1.11_noZhu16.melt$orf_length,
+             factor(node_length_clust1.11_noZhu16.melt$clust_num))
+
+clust_comp <- combn(1:11, m = 2, simplify = FALSE)
+
+#Do the tests for each combination, combione into a data frame and use p.adjust multiple testing adjustment.
+( length_tests.df <- lapply(c('greater', 'less'), 
+                            function(wilcox_text_alt){
+                              lapply(clust_comp, function(comparison){
+  test.stat <- wilcox.test(orf_length ~ clust_num,
+                           data = filter(node_length.melt,
+                                         expt != 'Zhu16_known'),
+                           subset = clust_num %in% comparison,
+                           alternative = wilcox_text_alt)
+  return(data.frame(comparison_1 = comparison[1],
+                    comparison_2 = comparison[2],
+                     stat = test.stat$statistic,
+                     pval = test.stat$p.value,
+                    wilcox_text.alt = wilcox_text_alt))
+                              }) %>% bind_rows
+}) %>% 
+  bind_rows %>% 
+  mutate(padj = round(p.adjust(pval), digits = 5),
+         pval = round(pval, digits = 5)) %>% 
+  arrange(desc(padj)) )
+
+length_med.df <- node_length.melt %>% 
+  group_by(clust_num) %>% 
+  summarise(orf_length_med = median(orf_length))
+
+length_tests.mat <- mutate(length_tests.df,
+                           orf_ratio = ifelse(padj <= 0.05, 
+                                              length_med.df$orf_length_med[
+                                                match(comparison_1, 
+                                                      length_med.df$clust_num)
+                                              ]/length_med.df$orf_length_med[
+                                                match(comparison_2, 
+                                                      length_med.df$clust_num)
+                                              ], 
+                                              NA)) %>% 
+  dcast(.,
+        comparison_1 ~ comparison_2,
+        value.var = 'orf_ratio')
+rownames(length_tests.mat) <- length_tests.mat[,1]
+length_tests.mat <- length_tests.mat[,-1]
+
+# nams <- unique(unlist(clust_comp))
+# 
+# #Need to add the first and last rows due to combn not using 1 as combination_2 and 11 as combination_1.
+# one.mat <- matrix(nrow = nrow(length_tests.mat),
+#        dimnames = list(rep(NA, length.out = nrow(length_tests.mat)), first(nams))) 
+# length_tests.mat <- cbind(one.mat, length_tests.mat)
+# 
+# last.mat <- matrix(ncol = ncol(length_tests.mat),
+#        dimnames = list(last(nams), rep(NA, 
+#                                        length.out = ncol(length_tests.mat))))
+# colnames(last.mat) <- names(length_tests.mat)
+# length_tests.mat <- rbind(length_tests.mat, last.mat)
+# 
+# library(ComplexHeatmap)
+# library(viridis)
+# #Make matrix symmetrical
+# length_tests.mat[
+#   lower.tri(length_tests.mat)
+# ] <- 1/(t(length_tests.mat)[
+#   lower.tri(length_tests.mat)
+# ])
+# 
+# colnames(length_tests.mat) <- rownames(length_tests.mat) <- nams
+# 
+# Heatmap(length_tests.mat, 
+#         cluster_columns = FALSE, 
+#         cluster_rows = FALSE,
+#         na_col = 'black',
+#         col = circlize::colorRamp2(c(0, 1, 1.4), c('blue', 'white', 'red')))
+
+length_tests.df %>%
+  filter(if_any(matches('comparison'),
+                ~grepl(.x,
+                       pattern = '^1$|3|8|10'))) %>%
+  arrange(desc(padj))
+
+length_tests.df %>%
+  filter(if_any(matches('comparison'),
+                ~grepl(.x,
+                       pattern = '7'))) %>%
+  arrange(desc(padj))
+length_tests.df %>%
+  filter(if_any(matches('comparison'),
+                ~grepl(.x,
+                       pattern = '9'))) %>%
+  arrange(desc(padj))
+```
+
+```{r where_ancestral}
+
+outfmt6_headers <- 
+  'qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs qcovhsp slen nident' %>% 
+  strsplit(split = ' ') %>% 
+  unlist
+
+  #Read in BLAST file 
+blast_30pid25lngth.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_30pid25lngthNoSame2Same.blast',
+           col.names = outfmt6_headers) %>% 
+  mutate(
+    scovhsp = round( (nident/slen * 100), digits = 2),
+    scovs = round(((abs(send - sstart) + 1)/slen *100), digits = 2),
+    evalue = format(evalue, scientific = TRUE)
+  )
+
+#Ancestral: PVP01_1147700, PVX_113230
+#Vir14: 
+
+node.melt %>% 
+  filter(mcl == 'X30pid25lngthI1.4',
+         label %in% c('PVP01_1147700', 'PVX_113230', 'PVX_108770'))
+
+#All in cluster 4
+
+ancestral_blast <- blast_30pid25lngth.df %>% 
+  filter(qseqid %in% 
+           c('PVP01_1147700', 'PVX_113230') | sseqid %in% 
+           c('PVP01_1147700', 'PVX_113230'))
+hist(ancestral_blast$pident, breaks = 100)
+hist(ancestral_blast$scovhsp, breaks = 100)
+hist(ancestral_blast$qcovhsp, breaks = 100)
+
+ancestral_blast_filter <- filter(ancestral_blast,
+                          qcovhsp > 50,
+                          scovhsp > 50,
+                          nident > 80) 
+# ancestral_blast_filter <- filter(ancestral_blast, 
+#                                  grepl(qseqid, pattern = 'Zhu') | grepl(sseqid, pattern = 'Zhu')) %>% 
+#   arrange(pident)
+ancestral_blasters <- unique(c(ancestral_blast_filter$qseqid, ancestral_blast_filter$sseqid))
+
+node.df$ancestral_blast <- ifelse(node.df$label %in% ancestral_blasters,
+                                  TRUE,
+                                  FALSE)
+filter(node.df, ancestral_blast) %>% 
+  mutate(clust_num = X30pid25lngthI1.4) %>% 
+  select(!contains('lngth'))
+
+```
+
+```{r}
+vir14_blast <- blast_30pid25lngth.df %>% 
+  filter(qseqid %in% 
+           c('PVX_108770') | sseqid %in% 
+           c('PVX_108770'))
+hist(vir14_blast$pident, breaks = 100)
+hist(vir14_blast$scovhsp, breaks = 100)
+hist(vir14_blast$qcovhsp, breaks = 100)
+
+vir14_blast_filter <- filter(vir14_blast,
+                          qcovhsp > 50,
+                          scovhsp > 50,
+                          nident > 80) 
+# vir14_blast_filter <- filter(vir14_blast, 
+#                                  grepl(qseqid, pattern = 'Zhu') | grepl(sseqid, pattern = 'Zhu')) %>% 
+#   arrange(pident)
+vir14_blasters <- unique(c(vir14_blast_filter$qseqid, vir14_blast_filter$sseqid))
+
+node.df$vir14_blast <- ifelse(node.df$label %in% vir14_blasters,
+                                  TRUE,
+                                  FALSE)
+filter(node.df, vir14_blast) %>% 
+  mutate(clust_num = X30pid25lngthI1.4) %>% 
+  select(!contains('lngth'))
+
+```
+

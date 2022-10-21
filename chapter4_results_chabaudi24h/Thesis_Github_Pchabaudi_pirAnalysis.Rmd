@@ -551,12 +551,12 @@ chab_tpm.df_pca_coords <- data.frame(sample = rownames(chab_tpm.df_pca_var$coord
                                         PC3 = chab_tpm.df_pca_coords$Dim.3,
                                         PC2 = chab_tpm.df_pca_coords$Dim.2) %>% 
   dplyr::mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>% 
-  mutate( transmission = str_split_fixed(stage, pattern = '_', n = 2)[,1],
+  mutate( transmission = toupper(str_split_fixed(stage, pattern = '_', n = 2)[,1]),
           time = str_extract(stage,pattern = '[[:digit:]]{1,2}h|sch.culture')) 
-
-colornames <- viridis(length(unique(chab_tpm.df_pca_coords$time)))
-colornames <- setNames(colornames, 
-                       sort(unique(chab_tpm.df_pca_coords$time)))
+# 
+# colornames <- viridis(length(unique(chab_tpm.df_pca_coords$time)))
+# colornames <- setNames(colornames, 
+#                        sort(unique(chab_tpm.df_pca_coords$time)))
 
 
 pca_importance <- as.data.frame(summary(chab_tpm.df_pca)$importance)
@@ -605,7 +605,7 @@ if(global_save_var){
     melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
     # mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>%
     mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
-           transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1]) %>% 
+           transmission = toupper(str_split_fixed(sample, pattern = '_', n = 2)[,1])) %>% 
     group_by(sample, time, transmission) %>% 
     dplyr::summarise(sum_tpm = sum(tpm))
 
@@ -649,7 +649,7 @@ if(global_save_var){
     melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
     # mutate(stage = gsub(sample, pattern = '_[[:digit:]]$', replacement = '')) %>%
     mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
-           transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1]) %>% 
+           transmission = toupper(str_split_fixed(sample, pattern = '_', n = 2)[,1])) %>% 
     group_by(sample, time, transmission) %>% 
     dplyr::summarise(sum_tpm = sum(tpm))
 
@@ -736,7 +736,7 @@ cir_plot <- chab_tpm.df %>%
          if_any(!matches('Geneid'), ~ . > 1)) %>% 
   melt(id.vars = 'Geneid', variable.name = 'sample', value.name = 'tpm') %>% 
   mutate(time = str_extract(sample, pattern = '[[:digit:]]{2}h|sch.culture'),
-         transmission = str_split_fixed(sample, pattern = '_', n = 2)[,1],
+         transmission = toupper(str_split_fixed(sample, pattern = '_', n = 2)[,1]),
          SorL = cir_clade_info$SorL[match(Geneid, cir_clade_info$Geneid)]) %>% 
   group_by(Geneid, time, transmission, SorL) %>% 
   dplyr::summarise(tpm = median(tpm)) %>% 
@@ -924,12 +924,16 @@ chab_tpm_avg_forZ.list <- lapply(c('rMT', 'SBP'),
 chab_z.df <- read.csv(file = 'data/Pchabaudi_z.csv')
 #Make list object of the TPM values and the z-scores value by concatenating the 
 # lists of the zscore dataframes and the TPM lists from above.
-chab_z.list <- list('RMT' = c(chab_tpm_avg.list[['RMT']],
-                              list('zscores' = chab_z.df[,grepl(colnames(chab_z.df),
-                                                           pattern = 'Geneid|rMT')])),
+# Also rename the RMT dataframe columns to change 'rMT' to 'RMT'
+chab_z.list <- list('RMT' = list('experiment' = chab_tpm_avg.list[['RMT']]$experiment,
+                                 'tpm' = chab_tpm_avg.list[['RMT']]$tpm %>% 
+                                   rename_with(~gsub('rMT', 'RMT', .x)),
+                                 'zscores' = chab_z.df[,grepl(colnames(chab_z.df),
+                                                              pattern = 'Geneid|rMT')] %>% 
+                                   rename_with(~gsub('rMT', 'RMT', .x))),
                     'SBP' = c(chab_tpm_avg.list[['SBP']],
                               list('zscores' = chab_z.df[,grepl(colnames(chab_z.df),
-                                                           pattern = 'Geneid|SBP')])))
+                                                                pattern = 'Geneid|SBP')])))
 phaseogram_time_order <- list(rMT = list(zscore_order = list()),
                               SBP = list(zscore_order = list()))
 
