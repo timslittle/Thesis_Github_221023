@@ -1,0 +1,11 @@
+{
+    "salmon_version": "1.9.0",
+    "index": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon_indexes/Kim19_F/Kim19_F_0.95_cdhitest.fasta",
+    "libType": "ISR",
+    "mates1": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX5158534_SRR8347493_rR_rRNAdep.fq.1.gz",
+    "mates2": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX5158534_SRR8347493_rR_rRNAdep.fq.2.gz",
+    "threads": "8",
+    "validateMappings": [],
+    "output": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files/SRX5158534_SRR8347493/SRX5158534_SRR8347493_quant",
+    "auxDir": "aux_info"
+}

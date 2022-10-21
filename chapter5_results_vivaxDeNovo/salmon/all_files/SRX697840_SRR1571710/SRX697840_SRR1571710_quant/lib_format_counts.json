@@ -1,0 +1,22 @@
+{
+    "read_files": "[ /camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX697840_SRR1571710_rR_rRNAdep.fq.1.gz, /camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX697840_SRR1571710_rR_rRNAdep.fq.2.gz]",
+    "expected_format": "IU",
+    "compatible_fragment_ratio": 1.0,
+    "num_compatible_fragments": 2859962,
+    "num_assigned_fragments": 2859962,
+    "num_frags_with_concordant_consistent_mappings": 2809907,
+    "num_frags_with_inconsistent_or_orphan_mappings": 140813,
+    "strand_mapping_bias": 0.5011151614626391,
+    "MSF": 0,
+    "OSF": 0,
+    "ISF": 1408087,
+    "MSR": 0,
+    "OSR": 0,
+    "ISR": 1401820,
+    "SF": 69351,
+    "SR": 71462,
+    "MU": 0,
+    "OU": 0,
+    "IU": 0,
+    "U": 0
+}

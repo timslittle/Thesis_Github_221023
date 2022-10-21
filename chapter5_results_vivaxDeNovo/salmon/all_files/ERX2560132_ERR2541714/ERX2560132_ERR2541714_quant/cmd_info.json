@@ -1,0 +1,11 @@
+{
+    "salmon_version": "1.9.0",
+    "index": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon_indexes/ERX2560132_ERR2541714_Cheng19/ERX2560132_ERR2541714_Cheng19_0.95_cdhitest.fasta",
+    "libType": "A",
+    "mates1": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/ERX2560132_ERR2541714_rR_rRNAdep.fq.1.gz",
+    "mates2": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/ERX2560132_ERR2541714_rR_rRNAdep.fq.2.gz",
+    "threads": "8",
+    "validateMappings": [],
+    "output": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files/ERX2560132_ERR2541714/ERX2560132_ERR2541714_quant",
+    "auxDir": "aux_info"
+}

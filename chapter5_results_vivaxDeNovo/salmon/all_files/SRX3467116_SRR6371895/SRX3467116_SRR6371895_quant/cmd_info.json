@@ -1,0 +1,10 @@
+{
+    "salmon_version": "1.9.0",
+    "index": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon_indexes/SRX3467116_SRR6371895_Gural18/SRX3467116_SRR6371895_Gural18_0.95_cdhitest.fasta",
+    "libType": "A",
+    "unmatedReads": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX3467116_SRR6371895_rR_rRNAdep.fq.gz",
+    "threads": "8",
+    "validateMappings": [],
+    "output": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files/SRX3467116_SRR6371895/SRX3467116_SRR6371895_quant",
+    "auxDir": "aux_info"
+}

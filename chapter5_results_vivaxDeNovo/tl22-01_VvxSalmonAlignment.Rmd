@@ -13,7 +13,7 @@ output:
 
 # Intro
 
-This script analyses the results of a _de novo_ assembly of Plasmodium vivax RNAseq data.
+This script reads the Salmon files and assigns them cluster numbers from the networks.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, 
@@ -27,8 +27,7 @@ options(scipen = 999)
 ```{r loading_packages, include = FALSE, message = FALSE}
 # Load the required packages
 library('readr')
-library('dplyr', 
-        lib.loc = "/camp/home/littlet/R/x86_64-pc-linux-gnu-library/4.0")
+library('dplyr')
 library('stringr')
 library('purrr')
 library('kableExtra')
@@ -74,45 +73,26 @@ uniquify <- function(vector_names, first_one = TRUE){
 ```
 
 ```{r load_data}
-pir.info <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/PlasmoDBv56_VvxPirs_P01_Sal1.csv', 
+pir.info <- read.csv('PlasmoDBv56_VvxPirs_P01_Sal1.csv', 
                      header = TRUE)
 ```
 
 ```{r de_novo_pir_list}
-# pir_lists.dir <- "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/"
-# pir_lists.files <- list.files(pir_lists.dir, 
-#                               pattern = '0.95cdhitest_hmmerPfam-PlasmodiumVir.list',
-#                               full.names = TRUE) %>% 
-#   #Get those with file sizes above zero (no empty lists)
-#   # file.info gets the file sizes
-#   .[file.info(., extra_cols = FALSE)$size > 0]
-# 
-# # Read the pirs into a list (as a vector).
-# # sapply through the file list, read in the table and subset with the automatic column name V1
-# pir_list.vec <- unlist(
-#   sapply(pir_lists.files, 
-#          function(pir_list){
-#            #str_removing the _1 at the end of the removal 
-#            str_remove(read.table(pir_list)$V1, 
-#                       pattern =  '_[[:digit:]]$')
-#          })
-# )
-
 #Need to read in the >200aa ORF length  pirs
-pir_list.vec <- str_extract(names(read.fasta('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')),
+pir_list.vec <- str_extract(names(read.fasta('G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')),
                                   pattern = 'NODE.+(?=_[[:digit:]])')
                             
 print(paste0('Number of pirs total: ', length(pir_list.vec)))
 ```
 
 ```{r load_cluster_data}
-node.df <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv') %>% 
+node.df <- read.csv('sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv') %>% 
   #Convert the cluster numbers to a factor as they are discrete categories.
   mutate(across(contains('lngth'), factor))
 ```
 
 ```{r define_subfam}
-cluster_subfam.df <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/cluster_subfam_30pid25lngthI1.4.csv')
+cluster_subfam.df <- read.csv('cluster_subfam_30pid25lngthI1.4.csv')
 
 cluster_subfam_25.df <- head(cluster_subfam.df, 
                              n = 25)
@@ -133,13 +113,13 @@ unassigned = No Sal1 sequences in the cluster for subfamily assignment.
 
 ```{r load_salmon}
 #Get the full file paths of the salmon quant.sf files.
-quant_files <- list.files(path = "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files",
+quant_files <- list.files(path = "salmon/all_files",
                           recursive = TRUE,
                           pattern = 'quant.sf',
                           full.names = TRUE)
 
 #Load the samplesheet.txt file of metadata, add new column for salmon files
-samplesheet <- read.delim("/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samplesheet.txt") %>% 
+samplesheet <- read.delim("samplesheet.txt") %>% 
   mutate(salmon_quant = '')
 
 #Make a table of the files and the sample metadata from samplesheet.txt
@@ -257,7 +237,8 @@ expt_quant <- lapply(unique(samplesheet$Experiment),
 names(expt_quant) <- unique(samplesheet$Experiment)
 ```
 
-'noCluster' means that the pir sequence was not in the '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/gephi/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/nodes_mcl_50pid100lngthNoSame2Same.csv' file.
+'noCluster' means that the pir sequence was not in the 
+'nodes_mcl_50pid100lngthNoSame2Same.csv' file.
 I think this means that they didn't have any BLAST similarity to other pir to the thresholds:
 * 50% id.
 * alignment >=100aa.
@@ -273,7 +254,7 @@ lapply(names(expt_quant),
                     #                   expt, assembly, sep = '/'),
                     #            recursive = TRUE)
                     write.csv(expt_quant[[expt]][[assembly]],
-                              file = paste( "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/quantFiles_R",
+                              file = paste( "quantFiles_R",
                                             expt, assembly,
                                             paste0('quant_', 
                                                    assembly,

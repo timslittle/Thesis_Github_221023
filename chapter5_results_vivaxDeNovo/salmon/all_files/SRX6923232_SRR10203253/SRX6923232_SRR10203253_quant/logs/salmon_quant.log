@@ -1,0 +1,12 @@
+[2022-07-01 18:14:08.018] [jointLog] [info] setting maxHashResizeThreads to 8
+[2022-07-01 18:14:08.018] [jointLog] [info] Fragment incompatibility prior below threshold.  Incompatible fragments will be ignored.
+[2022-07-01 18:14:08.018] [jointLog] [info] Usage of --validateMappings implies use of minScoreFraction. Since not explicitly specified, it is being set to 0.65
+[2022-07-01 18:14:08.018] [jointLog] [info] Setting consensusSlack to selective-alignment default of 0.35.
+[2022-07-01 18:14:08.018] [jointLog] [info] parsing read library format
+[2022-07-01 18:14:08.018] [jointLog] [info] There is 1 library.
+[2022-07-01 18:14:08.023] [jointLog] [info] Loading pufferfish index
+[2022-07-01 18:14:08.024] [jointLog] [info] Loading dense pufferfish index.
+[2022-07-01 18:14:08.316] [jointLog] [info] done
+[2022-07-01 18:14:08.366] [jointLog] [info] Index contained 27,849 targets
+[2022-07-01 18:14:08.374] [jointLog] [info] Number of decoys : 0
+[2022-07-01 18:14:14.009] [jointLog] [warning] salmon was only able to assign 0 fragments to transcripts in the index, but the minimum number of required assigned fragments (--minAssignedFrags) was 10. This could be indicative of a mismatch between the reference and sample, or a very bad sample.  You can change the --minAssignedFrags parameter to force salmon to quantify with fewer assigned fragments (must have at least 1).

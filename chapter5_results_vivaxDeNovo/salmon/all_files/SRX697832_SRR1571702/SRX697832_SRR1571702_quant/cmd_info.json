@@ -1,0 +1,11 @@
+{
+    "salmon_version": "1.9.0",
+    "index": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon_indexes/Zhu16_SMRU1/Zhu16_SMRU1_0.95_cdhitest.fasta",
+    "libType": "A",
+    "mates1": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX697832_SRR1571702_rR_rRNAdep.fq.1.gz",
+    "mates2": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX697832_SRR1571702_rR_rRNAdep.fq.2.gz",
+    "threads": "8",
+    "validateMappings": [],
+    "output": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files/SRX697832_SRR1571702/SRX697832_SRR1571702_quant",
+    "auxDir": "aux_info"
+}

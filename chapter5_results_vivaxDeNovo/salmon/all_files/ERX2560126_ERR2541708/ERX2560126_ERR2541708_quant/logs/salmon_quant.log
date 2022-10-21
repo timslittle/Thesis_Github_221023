@@ -1,0 +1,46 @@
+[2022-07-05 15:34:19.059] [jointLog] [info] setting maxHashResizeThreads to 8
+[2022-07-05 15:34:19.059] [jointLog] [info] Fragment incompatibility prior below threshold.  Incompatible fragments will be ignored.
+[2022-07-05 15:34:19.059] [jointLog] [info] Usage of --validateMappings implies use of minScoreFraction. Since not explicitly specified, it is being set to 0.65
+[2022-07-05 15:34:19.059] [jointLog] [info] Setting consensusSlack to selective-alignment default of 0.35.
+[2022-07-05 15:34:19.059] [jointLog] [info] parsing read library format
+[2022-07-05 15:34:19.059] [jointLog] [info] There is 1 library.
+[2022-07-05 15:34:19.083] [jointLog] [info] Loading pufferfish index
+[2022-07-05 15:34:19.089] [jointLog] [info] Loading dense pufferfish index.
+[2022-07-05 15:34:21.254] [jointLog] [info] done
+[2022-07-05 15:34:21.300] [jointLog] [info] Index contained 51,734 targets
+[2022-07-05 15:34:21.312] [jointLog] [info] Number of decoys : 0
+[2022-07-05 15:34:29.873] [jointLog] [info] Automatically detected most likely library type as IU
+
+[2022-07-05 15:36:20.150] [jointLog] [info] Computed 73,252 rich equivalence classes for further processing
+[2022-07-05 15:36:20.150] [jointLog] [info] Counted 1,017,496 total reads in the equivalence classes 
+[2022-07-05 15:36:20.156] [jointLog] [warning] 0.224185% of fragments were shorter than the k used to build the index.
+If this fraction is too large, consider re-building the index with a smaller k.
+The minimum read size found was 20.
+
+
+[2022-07-05 15:36:20.156] [jointLog] [info] Number of mappings discarded because of alignment score : 17,547,589
+[2022-07-05 15:36:20.156] [jointLog] [info] Number of fragments entirely discarded because of alignment score : 483,122
+[2022-07-05 15:36:20.156] [jointLog] [info] Number of fragments discarded because they are best-mapped to decoys : 0
+[2022-07-05 15:36:20.156] [jointLog] [info] Number of fragments discarded because they have only dovetail (discordant) mappings to valid targets : 112,717
+[2022-07-05 15:36:20.161] [jointLog] [warning] Only 1017496 fragments were mapped, but the number of burn-in fragments was set to 5000000.
+The effective lengths have been computed using the observed mappings.
+
+[2022-07-05 15:36:20.161] [jointLog] [info] Mapping rate = 62.6151%
+
+[2022-07-05 15:36:20.161] [jointLog] [info] finished quantifyLibrary()
+[2022-07-05 15:36:20.213] [jointLog] [info] Starting optimizer
+[2022-07-05 15:36:20.238] [jointLog] [info] Marked 0 weighted equivalence classes as degenerate
+[2022-07-05 15:36:20.242] [jointLog] [info] iteration = 0 | max rel diff. = 1916.74
+[2022-07-05 15:36:20.151] [fileLog] [info] 
+At end of round 0
+==================
+Observed 1625000 total fragments (1625000 in most recent round)
+
+[2022-07-05 15:36:20.538] [jointLog] [info] iteration = 100 | max rel diff. = 1.73338e-06
+[2022-07-05 15:36:20.539] [jointLog] [info] Finished optimizer
+[2022-07-05 15:36:20.539] [jointLog] [info] writing output 
+
+[2022-07-05 15:36:20.617] [jointLog] [warning] NOTE: Read Lib [[ /camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/ERX2560126_ERR2541708_rR_rRNAdep.fq.1.gz, /camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/ERX2560126_ERR2541708_rR_rRNAdep.fq.2.gz]] :
+
+Detected a *potential* strand bias > 1% in an unstranded protocol check the file: /camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files/ERX2560126_ERR2541708/ERX2560126_ERR2541708_quant/lib_format_counts.json for details
+

@@ -20,13 +20,13 @@ safe_colorblind_palette <- c("#88CCEE", "#CC6677", "#DDCC77", "#117733", "#33228
 ```
 
 ```{r read_data}
-df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt')
+df <- read.delim('tl22-01_assembly_info.txt')
 ```
 
 #Want to show the stages of development in this.
 
 ```{r expt_name}
- accession_table <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samples_to_cat.csv')
+ accession_table <- read.csv('samples_to_cat.csv')
 
 #Extract the first two numbers of the name e.g. ERX2560125_ERR2541707
 df$Cat.Sample.stage.s. <- factor(
@@ -82,7 +82,7 @@ df$Cat.Sample.stage.s. <- factor(
          legend.title = element_text(size = 7),
          legend.box = 'horizontal'))
 ggsave(plot = plot,
-       '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_numNovPir_v_totalTranscripts.pdf',
+       'plots/assemblies_numNovPir_v_totalTranscripts.pdf',
        device = 'pdf',
        width = 7,
        height = 5,

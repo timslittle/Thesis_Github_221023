@@ -30,9 +30,7 @@ global_save_var <- FALSE
 
 ```{r loading_packages, include = FALSE, message = FALSE}
 # Load the required packages
-library('dplyr', 
-        # lib.loc = "/camp/home/littlet/R/x86_64-pc-linux-gnu-library/4.0"
-        )
+library('dplyr')
 library('readr')
 library('stringr')
 library('purrr')
@@ -82,12 +80,12 @@ uniquify <- function(vector_names, first_one = TRUE){
 
 ```{r read_quantR}
 
-samplesheet <- read.delim("/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samplesheet.txt")
+samplesheet <- read.delim("samplesheet.txt")
 
 #Fix the missing helpful_assembly_name for Kim_U samples
 samplesheet$helpful_assembly_name[grepl(samplesheet$library_name, pattern = 'U_{1,2}')] <- rep('Isolate_20', 2)
 
-expt_num.df <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/expt_codes.csv')
+expt_num.df <- read.csv('expt_codes.csv')
 
 expt_quant <- lapply(unique(samplesheet$Experiment),
                      function(expt){
@@ -100,7 +98,7 @@ expt_quant <- lapply(unique(samplesheet$Experiment),
                                                                            pattern = '(?<=cdhitest\\/).+(?=\\/)')
                                                    #Get the file name by pasting the words together
                                                    quant_file <- paste(
-                                                     "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/quantFiles_R",
+                                                     "quantFiles_R",
                                                      expt, assembly, 
                                                      paste0('quant_', 
                                                             assembly,
@@ -200,7 +198,7 @@ names(top_subfam_col) <- select_subfam
 How does the number of pir sub-families transcribed in each sample vary by BUSCO score?
 
 ```{r pir_diversity_v_BUSCOs}
-buscos <- read.table('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info_extra_busco.txt')
+buscos <- read.table('tl22-01_assembly_info_extra_busco.txt')
 
 subfam_numbers <- lapply(names(expt_quant), 
                          function(expt){
@@ -441,7 +439,7 @@ lapply(names(expt_quant),
                      ggsave(
                        plot = cowplot::plot_grid(apl, bpl, ncol = 2),
                        filename = paste0(
-                         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/salmonQuant_plots/tl22-01_',
+                         'plots/salmonQuant_plots/tl22-01_',
                          expt, '_', absolute_or_norm, '_', assembly,
                          '_quantSalmon_stacked_subfam30pid25lngthI14.pdf'
                        ),
@@ -498,7 +496,7 @@ legend.plot <- ggplot(data.frame(subfam = names(top_subfam_col), top_subfam_col)
 if(global_save_var){
   ggsave(
     plot = legend.plot,
-    filename = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/salmonQuant_plots/tl22-01_legend_quantSalmon_stacked_subfam30pid25lngthI14.pdf',
+    filename = 'plots/salmonQuant_plots/tl22-01_legend_quantSalmon_stacked_subfam30pid25lngthI14.pdf',
     width = 7,
     height = 5,
     units = "in",
@@ -725,7 +723,7 @@ paste0('Number of transcribed pirs = ',
        ' and number of non-transcribed pirs = ',
        nrow(filter(gene_quant, pir)) - nrow(expressed_pirTranscripts))
 
-G18G19_hmmerVir200aa.fa <- read.fasta('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')
+G18G19_hmmerVir200aa.fa <- read.fasta('G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')
 
 names_no_end <- str_remove(names(G18G19_hmmerVir200aa.fa), pattern = '_[[:digit:]]{1,2}$')
 
@@ -749,12 +747,12 @@ table(str_extract(names(G18G19_hmmerVir200aa_tpmOver1.fa), pattern ='.+(?=_NODE)
 
 # write.fasta(G18G19_hmmerVir200aa_tpmOver1.fa,
 #             names(G18G19_hmmerVir200aa_tpmOver1.fa),
-#             file.out = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
+#             file.out = 'G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
 
 ```
 
 ```{r Num-pir-transcript_v_Num-transcript-total}
-assembly_info.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt') %>% 
+assembly_info.df <- read.delim('tl22-01_assembly_info.txt') %>% 
   filter(!grepl(assembly, pattern = '0\\.9c|0\\.99'),
          !grepl(assembly, pattern = 'SRX5158513_SRR8347514|SRX5158512_SRR8347515'))  
 #Filter out any none-0.95 assembly made. And potential Kim19_A duplicate?
@@ -795,7 +793,7 @@ expt_num.df <- data.frame(expt = expt_num.vec,
                           expt_code = names(expt_num.vec), 
                           col = c(colours_val,colours_val['E07'],colours_val['E08']))
 # write.csv(expt_num.df,
-#           file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/expt_codes.csv',
+#           file = 'expt_codes.csv',
 #           row.names = FALSE)
 
   
@@ -818,7 +816,7 @@ expt_num.df <- data.frame(expt = expt_num.vec,
 
 if(global_save_var){
   ggsave(plot = plot,
-         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_numPirTranscripts_totalTranscripts.pdf',
+         'plots/assemblies_numPirTranscripts_totalTranscripts.pdf',
          device = 'pdf',
          width = 7,
          height = 5,
@@ -826,7 +824,7 @@ if(global_save_var){
 }
 ```
 
-ISSUE: Why is the number of sequences in '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta' larger than sum(assembly_info_samplesheet.df£$num_uniq_mRNA_pirHMMerORFs_nomatch95known_over200aa)
+ISSUE: Why is the number of sequences in 'G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta' larger than sum(assembly_info_samplesheet.df£$num_uniq_mRNA_pirHMMerORFs_nomatch95known_over200aa)
 
 Observations:
 * Some drop-outs between the samples? Perhaps because one transcript was exclusively assembled from one sample.

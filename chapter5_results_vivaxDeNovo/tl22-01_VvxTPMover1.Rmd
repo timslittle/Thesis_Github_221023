@@ -27,8 +27,7 @@ options(scipen = 999)
 ```{r loading_packages, include = FALSE, message = FALSE}
 # Load the required packages
 library('readr')
-library('dplyr', 
-        lib.loc = "/camp/home/littlet/R/x86_64-pc-linux-gnu-library/4.0")
+library('dplyr')
 library('stringr')
 library('purrr')
 library('kableExtra')
@@ -78,7 +77,7 @@ uniquify <- function(vector_names, first_one = TRUE){
 ```
 
 ```{r read_200aa_pirs}
-G18G19_hmmerVir200aa.fa <- read.fasta('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')
+G18G19_hmmerVir200aa.fa <- read.fasta('G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_200aa.fasta')
 
 #Need to read in the >200aa ORF length  pirs
 pir_list.vec <- str_extract(
@@ -89,13 +88,13 @@ pir_list.vec <- str_extract(
 
 ```{r load_salmon}
 #Get the full file paths of the salmon quant.sf files.
-quant_files <- list.files(path = "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files",
+quant_files <- list.files(path = "salmon/all_files",
                           recursive = TRUE,
                           pattern = 'quant.sf',
                           full.names = TRUE)
 
 #Load the samplesheet.txt file of metadata, add new column for salmon files
-samplesheet <- read.delim("/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samplesheet.txt") %>% 
+samplesheet <- read.delim("samplesheet.txt") %>% 
   mutate(salmon_quant = '')
 
 #Make a table of the files and the sample metadata from samplesheet.txt
@@ -292,7 +291,7 @@ table(str_extract(names(G18G19_hmmerVir200aa_tpmOver1.fa), pattern ='.+(?=_NODE)
 #Save the fasta file of the over 1 TPM pirs.
 # write.fasta(G18G19_hmmerVir200aa_tpmOver1.fa,
 #             names(G18G19_hmmerVir200aa_tpmOver1.fa),
-#             file.out = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
+#             file.out = 'G18_B20_C19_Z16_M19_R20_K1719_G19-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
 
 # sum(expressed_pirTranscripts$Name == 'NODE_2407_length_2160_cov_4.64561')
 
@@ -344,7 +343,7 @@ over1.df <- lapply(names(expt_quant),
 
 ```{r assembly_info}
 
-assembly_info.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt') %>% 
+assembly_info.df <- read.delim('tl22-01_assembly_info.txt') %>% 
   filter(!grepl(assembly, pattern = '0\\.9c|0\\.99'),
          !grepl(assembly, pattern = 'SRX5158513_SRR8347514|SRX5158512_SRR8347515'))  
 #Filter out any none-0.95 assembly made. And potential Kim19_A duplicate?
@@ -420,7 +419,7 @@ assembly_info_samplesheet.df$num_mRNA_pir_over200aa_over1TPM <- ifelse(
 )
 
 write.table(assembly_info_samplesheet.df,
-            '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info_extra.txt')
+            'tl22-01_assembly_info_extra.txt')
 
 ```
 
@@ -444,7 +443,7 @@ write.table(assembly_info_samplesheet.df,
 
 if(global_save_var){
   ggsave(plot = plot,
-         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_numTranscriptsOver1tpm_totalTranscripts.pdf',
+         'plots/assemblies_numTranscriptsOver1tpm_totalTranscripts.pdf',
          device = 'pdf',
          width = 7,
          height = 5,
@@ -476,7 +475,7 @@ if(global_save_var){
 
 if(global_save_var){
   ggsave(plot = plot,
-         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/assemblies_numPirOver1tpm_totalTranscripts.pdf',
+         'plots/assemblies_numPirOver1tpm_totalTranscripts.pdf',
          device = 'pdf',
          width = 7,
          height = 5,

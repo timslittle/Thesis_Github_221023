@@ -1,0 +1,10 @@
+{
+    "salmon_version": "1.9.0",
+    "index": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon_indexes/Muller19_Thai3/Muller19_Thai3_0.95_cdhitest.fasta",
+    "libType": "A",
+    "unmatedReads": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/bbduk/all_files/SRX2600369_SRR5298182_rR_rRNAdep.fq.gz",
+    "threads": "8",
+    "validateMappings": [],
+    "output": "/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/salmon/all_files/SRX2600369_SRR5298182/SRX2600369_SRR5298182_quant",
+    "auxDir": "aux_info"
+}

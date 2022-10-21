@@ -73,22 +73,22 @@ uniquify <- function(vector_names, first_one = TRUE){
 ```
 
 ```{r read_data}
-accession_table <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/samples_to_cat.csv')
-assembly.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/tl22-01_assembly_info.txt')
-subfam.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-02_VirSubfamNetwork/pir_info/lopez13_vir_subfam.txt', header = FALSE)
+accession_table <- read.csv('samples_to_cat.csv')
+assembly.df <- read.delim('tl22-01_assembly_info.txt')
+subfam.df <- read.delim('lopez13_vir_subfam.txt', header = FALSE)
 colnames(subfam.df) <- c('Geneid','subfam')
-expt.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/scripts/all-cat.list', header = FALSE, sep = '')
+expt.df <- read.delim('all-cat.list', header = FALSE, sep = '')
 colnames(expt.df) <- c('Accession', 'expt')
-expt_num.df <- read.csv('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/github_project/tl22-01_vivaxDeNovo/expt_codes.csv')
+expt_num.df <- read.csv('expt_codes.csv')
 ```
 
 ```{r MCL_parameters}
-# list.files('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1', 
+# list.files('hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1', 
   #          pattern = 'mci.+list') %>% 
   # head %>% 
   # str_extract_all(pattern = '(?<=_)[[:digit:]]+(?=pid)|[[:digit:]]+(?=lngth)|(?<=mci\\.)I.+(?=\\.list)')
 
-network_file_dir <- '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1'
+network_file_dir <- 'networks'
 
 #Search for all the MCI lists of the clustering, extract the relevant bits which shows the % id, alignment length and inflation factor.
 network_parameters.list <- list.files(network_file_dir, 
@@ -123,7 +123,7 @@ names(mcl.list) <- network_parameters.list
 ```
 
 ```{r get_MCLclusters}
-fasta <- read.fasta(file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
+fasta <- read.fasta(file = 'all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1.fasta')
 
 inflation_values <- unique(str_extract(names(mcl.list),
                                        pattern = '(?<=I).+'))
@@ -202,9 +202,9 @@ inflation_values <- unique(str_extract(names(mcl.list),
 
 # 
 # write.table(sequence.df,
-#             file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1.txt')
+#             file = 'networks/tpmOver1/sequence-MCLclusters_tpmOver1.txt')
 
-sequence.df <- read.table(file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1.txt',
+sequence.df <- read.table(file = 'sequence-MCLclusters_tpmOver1.txt',
                           check.names = FALSE)
 
 # # How many sequences have all zeros? Sequence.df should have same row num as fasta file length.
@@ -222,7 +222,7 @@ length_aa.vec <- c(25,50,75,100,150,200,250,300)
 #     #Read in BLAST file for these percentage id and length aa 
 #     # Get a list of the unique sequences from the first two columns
 #     blast.names <- read.delim(paste0(
-#       '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_',
+#       'hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_',
 #       perc_ident,'pid',
 #       length_aa,'lngthNoSame2Same.blast'
 #     ),
@@ -269,8 +269,8 @@ length_aa.vec <- c(25,50,75,100,150,200,250,300)
 #   select(-in_network)
 
 # write.table(sequence.df.melt,
-#             file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_longForm.txt')
-sequence.df.melt <- read.table(file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_longForm.txt')
+#             file = 'networks/tpmOver1/sequence-MCLclusters_tpmOver1_longForm.txt')
+sequence.df.melt <- read.table(file = 'sequence-MCLclusters_tpmOver1_longForm.txt')
 ```
 
 ```{r not_in_top100}
@@ -372,12 +372,12 @@ filter(cluster_subfam_mixing.df,
 #   dcast(label + Id + source + subfam + expt ~ network_parameters, value.var = 'cluster_num')
 # 
 # write.csv(node.df,
-#           '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv',
+#           'networks/tpmOver1/sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv',
 #           row.names = FALSE,
 #           quote = FALSE)
 
 node.df <- read.csv(
-  '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv')
+  'sequence-MCLclusters_tpmOver1_30pid25lngthI14.csv')
 
 node.df[apply(node.df[,str_detect(colnames(node.df), pattern = 'pid.+lngth')], 
               1,
@@ -442,7 +442,7 @@ cluster_subfam.df$subfam_assignment <- uniquify(cluster_subfam.df$subfam_clust,
                            first_one = TRUE)
 
 # write.csv(cluster_subfam.df,
-#           file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/cluster_subfam_30pid25lngthI1.4.csv',
+#           file = 'networks/tpmOver1/cluster_subfam_30pid25lngthI1.4.csv',
 #           row.names = FALSE,
 #           quote = FALSE)
 
@@ -451,7 +451,7 @@ cluster_subfam.df$subfam_assignment <- uniquify(cluster_subfam.df$subfam_clust,
 
 ```{r write_edge.csv}
 
-# blast_30pid25lngth.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_30pid25lngthNoSame2Same.blast',
+# blast_30pid25lngth.df <- read.delim('hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_30pid25lngthNoSame2Same.blast',
 #            header = FALSE)
 # 
 # node_labels.df <- blast_30pid25lngth.df %>%
@@ -470,7 +470,7 @@ cluster_subfam.df$subfam_assignment <- uniquify(cluster_subfam.df$subfam_clust,
 # colnames(node_labels_noDup_toSave.df) <- c('Source', 'Target')
 
 # write.csv(node_labels_noDup_toSave.df,
-#           file = '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/networks/tpmOver1/edges_30pid25lngthNoS2S.csv',
+#           file = 'networks/tpmOver1/edges_30pid25lngthNoS2S.csv',
 #           row.names = FALSE,
 #           quote = FALSE)
 
@@ -609,7 +609,7 @@ lapply(unique(node.melt$mcl),
                   
                   if(global_save_var){
                     ggsave(plot = plot,
-                           paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_exptComposition_',
+                           paste0('plots/networks_exptComposition_',
                                   include,'_',mcl_name,'.pdf'),
                            device = 'pdf',
                            width = 7,
@@ -703,7 +703,7 @@ top_subfam_col.vec <- setNames(unique(colours_subfam$colours),
 
 if(global_save_var){
   ggsave(plot = plot,
-         paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_clustComp_Expt.pdf'),
+         paste0('plots/networks_clustComp_Expt.pdf'),
          device = 'pdf',
          width = 7,
          height = 8,
@@ -840,7 +840,7 @@ lapply(unique(node.melt$mcl),
          
          if(global_save_var){
            ggsave(plot = plot,
-                  paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_exptStep_'
+                  paste0('plots/networks_exptStep_'
                          ,mcl_name,'.pdf'),
                   device = 'pdf',
                   width = 7,
@@ -871,9 +871,9 @@ lapply(unique(node.melt$mcl),
                                         mcl == paste(mcl_name)) %>% 
            #Make clust_num numeric for correct ordering by number.
            mutate(clust_num = as.numeric(clust_num),
-                  subfam = ifelse(subfam == 'Sal1', 
+                  subfam = ifelse(subfam.x == 'Sal1', 
                                   'unassigned',
-                                  subfam)) %>% 
+                                  subfam.x)) %>% 
            group_by(subfam, clust_num) %>% 
            filter(clust_num %in% 1:25, 
                   source == 'Sal1') %>%
@@ -894,7 +894,7 @@ lapply(unique(node.melt$mcl),
          
          if(global_save_var){
            ggsave(plot = plot,
-                  paste0('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_sal1Composition_',
+                  paste0('plots/networks_sal1Composition_',
                          mcl_name,'.pdf'),
                   device = 'pdf',
                   width = 7,
@@ -907,7 +907,6 @@ lapply(unique(node.melt$mcl),
 ```
 
 ```{r pir_sizes}
-
 node_length.melt <- filter(node.melt, 
        mcl == 'X30pid25lngthI1.4') %>% 
   rowwise() %>% 
@@ -947,7 +946,7 @@ node_length_clust1.11_noZhu16.melt %>%
 
 if(global_save_var){
   ggsave(plot = plot_orf,
-         '/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/plots/networks_ORFlength.pdf',
+         'plots/networks_ORFlength.pdf',
          device = 'pdf',
          width = 7,
          height = 5,
@@ -992,112 +991,6 @@ lapply(1:11, function(clust_num){
 })
 ```
 
-Cluster 8 particularly long?
-
-Looks like there's a little group of longer pirs for some experiments/P01/Sal1.
-Like over 800aa - pretty much all in Cluster 1 (E). 
-I wonder if this is the two groups in the Gephi network.
-
-Cluster 7 and 9 low variability, potentially shorter?
-
-```{r kwtest_length}
-#K-W test of if there is a signif difference between the clusters for length
-
-kruskal.test( node_length.melt$orf_length, factor(node_length.melt$clust_num))
-kruskal.test(node_length_clust1.11_noZhu16.melt$orf_length,
-             factor(node_length_clust1.11_noZhu16.melt$clust_num))
-
-clust_comp <- combn(1:11, m = 2, simplify = FALSE)
-
-#Do the tests for each combination, combione into a data frame and use p.adjust multiple testing adjustment.
-( length_tests.df <- lapply(c('greater', 'less'), 
-                            function(wilcox_text_alt){
-                              lapply(clust_comp, function(comparison){
-  test.stat <- wilcox.test(orf_length ~ clust_num,
-                           data = filter(node_length.melt,
-                                         expt != 'Zhu16_known'),
-                           subset = clust_num %in% comparison,
-                           alternative = wilcox_text_alt)
-  return(data.frame(comparison_1 = comparison[1],
-                    comparison_2 = comparison[2],
-                     stat = test.stat$statistic,
-                     pval = test.stat$p.value,
-                    wilcox_text.alt = wilcox_text_alt))
-                              }) %>% bind_rows
-}) %>% 
-  bind_rows %>% 
-  mutate(padj = round(p.adjust(pval), digits = 5),
-         pval = round(pval, digits = 5)) %>% 
-  arrange(desc(padj)) )
-
-length_med.df <- node_length.melt %>% 
-  group_by(clust_num) %>% 
-  summarise(orf_length_med = median(orf_length))
-
-length_tests.mat <- mutate(length_tests.df,
-                           orf_ratio = ifelse(padj <= 0.05, 
-                                              length_med.df$orf_length_med[
-                                                match(comparison_1, 
-                                                      length_med.df$clust_num)
-                                              ]/length_med.df$orf_length_med[
-                                                match(comparison_2, 
-                                                      length_med.df$clust_num)
-                                              ], 
-                                              NA)) %>% 
-  dcast(.,
-        comparison_1 ~ comparison_2,
-        value.var = 'orf_ratio')
-rownames(length_tests.mat) <- length_tests.mat[,1]
-length_tests.mat <- length_tests.mat[,-1]
-
-# nams <- unique(unlist(clust_comp))
-# 
-# #Need to add the first and last rows due to combn not using 1 as combination_2 and 11 as combination_1.
-# one.mat <- matrix(nrow = nrow(length_tests.mat),
-#        dimnames = list(rep(NA, length.out = nrow(length_tests.mat)), first(nams))) 
-# length_tests.mat <- cbind(one.mat, length_tests.mat)
-# 
-# last.mat <- matrix(ncol = ncol(length_tests.mat),
-#        dimnames = list(last(nams), rep(NA, 
-#                                        length.out = ncol(length_tests.mat))))
-# colnames(last.mat) <- names(length_tests.mat)
-# length_tests.mat <- rbind(length_tests.mat, last.mat)
-# 
-# library(ComplexHeatmap)
-# library(viridis)
-# #Make matrix symmetrical
-# length_tests.mat[
-#   lower.tri(length_tests.mat)
-# ] <- 1/(t(length_tests.mat)[
-#   lower.tri(length_tests.mat)
-# ])
-# 
-# colnames(length_tests.mat) <- rownames(length_tests.mat) <- nams
-# 
-# Heatmap(length_tests.mat, 
-#         cluster_columns = FALSE, 
-#         cluster_rows = FALSE,
-#         na_col = 'black',
-#         col = circlize::colorRamp2(c(0, 1, 1.4), c('blue', 'white', 'red')))
-
-length_tests.df %>%
-  filter(if_any(matches('comparison'),
-                ~grepl(.x,
-                       pattern = '^1$|3|8|10'))) %>%
-  arrange(desc(padj))
-
-length_tests.df %>%
-  filter(if_any(matches('comparison'),
-                ~grepl(.x,
-                       pattern = '7'))) %>%
-  arrange(desc(padj))
-length_tests.df %>%
-  filter(if_any(matches('comparison'),
-                ~grepl(.x,
-                       pattern = '9'))) %>%
-  arrange(desc(padj))
-```
-
 ```{r where_ancestral}
 
 outfmt6_headers <- 
@@ -1106,7 +999,7 @@ outfmt6_headers <-
   unlist
 
   #Read in BLAST file 
-blast_30pid25lngth.df <- read.delim('/camp/lab/langhornej/working/HPC/littlet/tl22-01_vivaxDeNovo/hmmer/scspades/G18_B20_C19_Z16_M19_R20_K1719_G19-cat/tpmOver1/all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_30pid25lngthNoSame2Same.blast',
+blast_30pid25lngth.df <- read.delim('all-cat_scspades_0.95cdhitest_hmmerPfam-PlasmodiumVir_orf200aa_tpmOver1_all2allBlast_30pid25lngthNoSame2Same.blast',
            col.names = outfmt6_headers) %>% 
   mutate(
     scovhsp = round( (nident/slen * 100), digits = 2),
@@ -1149,7 +1042,7 @@ filter(node.df, ancestral_blast) %>%
 
 ```
 
-```{r}
+```{r vir14}
 vir14_blast <- blast_30pid25lngth.df %>% 
   filter(qseqid %in% 
            c('PVX_108770') | sseqid %in% 
